@@ -1,12 +1,16 @@
+import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-import random  # ← 위로 올려줘야 돼!
-
-import os
+from discord.ui import Button, View, Modal, TextInput
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import psycopg2
+import datetime
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = 1359504363378184242
+DATABASE_URL = os.getenv("DATABASE_URL")
+GUILD_ID = int(os.getenv("GUILD_ID"))
 COCO_USER_ID = 710614752963067985
+RECORD_CHANNEL_ID = int(os.getenv("RECORD_CHANNEL_ID")) 
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -59,6 +63,127 @@ SONG_LIST = [
     "Even of Day(DAY6) - 뚫고 지나가요",
     "DAY6 - Love me or leave me",
 ]
+
+# DB 연결
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+
+# 테이블 생성 (최초 1번만 필요)
+cur.execute("""
+CREATE TABLE IF NOT EXISTS records (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    date DATE NOT NULL,
+    category TEXT NOT NULL,
+    checklist TEXT,
+    image_url TEXT
+);
+""")
+conn.commit()
+
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# === Modal ===
+class RecordModal(Modal, title="기록 입력"):
+    checklist = TextInput(label="오늘 기록 (운동/식단/단식)", style=discord.TextStyle.paragraph)
+
+    def __init__(self, category: str, user_id: int):
+        super().__init__()
+        self.category = category
+        self.user_id = user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        today = datetime.date.today()
+        # 첨부파일 URL (사진 업로드)
+        image_url = interaction.message.attachments[0].url if interaction.message and interaction.message.attachments else None
+
+        cur.execute(
+            "INSERT INTO records (user_id, date, category, checklist, image_url) VALUES (%s, %s, %s, %s, %s)",
+            (self.user_id, today, self.category, self.checklist.value, image_url)
+        )
+        conn.commit()
+
+        await interaction.response.send_message(
+            f"{interaction.user.display_name}님의 [{self.category}] 기록이 저장되었습니다!", ephemeral=True
+        )
+
+# === 버튼 뷰 ===
+class RecordView(View):
+    def __init__(self, user_id: int):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+
+    @discord.ui.button(label="운동", style=discord.ButtonStyle.green)
+    async def exercise_button(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(RecordModal("운동", self.user_id))
+
+    @discord.ui.button(label="식단", style=discord.ButtonStyle.blurple)
+    async def diet_button(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(RecordModal("식단", self.user_id))
+
+    @discord.ui.button(label="단식", style=discord.ButtonStyle.red)
+    async def fast_button(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(RecordModal("단식", self.user_id))
+
+# === Slash Command ===
+@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
+async def 기록(interaction: discord.Interaction):
+    view = RecordView(interaction.user.id)
+    await interaction.response.send_message(
+        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
+    )
+
+# === 스케줄러: 주간 요약 ===
+async def weekly_report():
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=today.weekday())  # 이번 주 월요일
+    end = start + datetime.timedelta(days=6)  # 이번 주 일요일
+
+    cur.execute("""
+        SELECT user_id, date, category, checklist, image_url
+        FROM records
+        WHERE date BETWEEN %s AND %s
+        ORDER BY user_id, date
+    """, (start, end))
+    rows = cur.fetchall()
+
+    # 요약 메시지 만들기
+    report = "**주간 운동팟 기록**\n"
+    user_records = {}
+    for row in rows:
+        user_id, date, category, checklist, image_url = row
+        if user_id not in user_records:
+            user_records[user_id] = {}
+        user_records[user_id][date] = (category, checklist, image_url)
+
+    for user_id, records in user_records.items():
+        report += f"\n<@{user_id}>의 기록\n"
+        for i in range(7):
+            day = start + datetime.timedelta(days=i)
+            if day in records:
+                cat, chk, img = records[day]
+                report += f"{day.strftime('%a')} : [{cat}] {chk} {img or ''}\n"
+            else:
+                report += f"{day.strftime('%a')} : 기록없음\n"
+
+    channel = bot.get_channel(RECORD_CHANNEL_ID)
+    if channel:
+        await channel.send(report)
+
+# 스케줄러 등록
+scheduler = AsyncIOScheduler()
+scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
+scheduler.start()
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("명령어 동기화 완료")
+    except Exception as e:
+        print(e)
 
 @bot.event
 async def on_ready():
