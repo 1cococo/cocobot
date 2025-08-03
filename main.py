@@ -82,15 +82,32 @@ conn.commit()
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+
+# === 봇 클래스 정의 (setup_hook 사용) ===
+class CocoBot(commands.Bot):
+    async def setup_hook(self):
+        try:
+            self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
+            await setup_commands()
+            await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+            print("명령어 동기화 완료 (길드 전용)")
+            print("등록된 커맨드 목록:", [c.name for c in self.tree.get_commands(guild=discord.Object(id=GUILD_ID))])
+        except Exception as e:
+            print(e)
+
+        if not scheduler.running:
+            scheduler.start()
+            print("스케줄러 시작됨")
+
+bot = CocoBot(command_prefix="!", intents=intents)
 
 # === 포럼 스레드 찾기 ===
-async def get_user_thread(user_name: str):
+async def get_user_thread(user: discord.User | discord.Member):
     forum_channel = bot.get_channel(RECORD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
     for thread in forum_channel.threads:
-        if user_name in thread.name:
+        if str(user.id) in thread.name:  # 스레드 이름에 user_id 포함시 매칭
             return thread
     return None
 
@@ -115,7 +132,7 @@ class RecordModal(Modal, title="기록 입력"):
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
 
-        thread = await get_user_thread(interaction.user.display_name)
+        thread = await get_user_thread(interaction.user)
         if thread:
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
@@ -206,7 +223,7 @@ async def weekly_report():
         user_records[user_id][date] = (category, checklist, image_url)
 
     for user_id, records in user_records.items():
-        thread = await get_user_thread((await bot.fetch_user(user_id)).display_name)
+        thread = await get_user_thread(await bot.fetch_user(user_id))
         if not thread:
             continue
         report = f"**📋 이번 주 기록 요약**\n<@{user_id}>의 주간 기록\n"
@@ -224,22 +241,5 @@ async def weekly_report():
 
 scheduler = AsyncIOScheduler()
 scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        # 특정 길드 커맨드 초기화 후 다시 등록
-        bot.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
-        await setup_commands()
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))  # 길드 전용 싱크
-        print("명령어 동기화 완료 (길드 전용)")
-        print("등록된 커맨드 목록:", [c.name for c in bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))])
-    except Exception as e:
-        print(e)
-
-    if not scheduler.running:
-        scheduler.start()
-        print("스케줄러 시작됨")
 
 bot.run(TOKEN)
