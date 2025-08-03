@@ -68,9 +68,17 @@ async def get_user_thread(user: discord.User | discord.Member):
     forum_channel = bot.get_channel(RECORD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
+
+    # 먼저 활성 스레드에서 찾기
     for thread in forum_channel.threads:
-        if str(user.id) in thread.name or str(user.display_name) in thread.name:
+        if str(user.id) in thread.name or user.display_name in thread.name or user.name in thread.name:
             return thread
+
+    # 아카이브된 스레드에서도 찾기
+    async for archived in forum_channel.archived_threads(limit=None):
+        if str(user.id) in archived.name or user.display_name in archived.name or user.name in archived.name:
+            return archived
+
     return None
 
 class RecordModal(Modal, title="기록 입력"):
