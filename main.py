@@ -88,13 +88,13 @@ intents.guilds = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
+            self.tree.clear_commands(guild=None)
             await setup_commands()
             await self.tree.sync(guild=discord.Object(id=GUILD_ID))
             print("명령어 동기화 완료 (길드 전용)")
             print("등록된 커맨드 목록:", [c.name for c in self.tree.get_commands(guild=discord.Object(id=GUILD_ID))])
         except Exception as e:
-            print(e)
+            print("[ERROR] setup_hook:", e)
 
         if not scheduler.running:
             scheduler.start()
@@ -102,7 +102,7 @@ class CocoBot(commands.Bot):
 
 bot = CocoBot(command_prefix="!", intents=intents)
 
-# === 포럼 스레드 찾기 (안전 모드: 아카이브 스레드 조회 제거) ===
+# === 포럼 스레드 찾기 ===
 async def get_user_thread(user: discord.User | discord.Member):
     forum_channel = bot.get_channel(RECORD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
@@ -131,15 +131,21 @@ class RecordModal(Modal, title="기록 입력"):
         )
         conn.commit()
 
-        await interaction.response.send_message(
-            "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True
-        )
+        try:
+            await interaction.response.send_message(
+                "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True
+            )
+        except Exception as e:
+            print("[ERROR] 응답 실패:", e)
 
         thread = await get_user_thread(interaction.user)
         if thread:
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
-            await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.", ephemeral=True)
+            try:
+                await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.", ephemeral=True)
+            except Exception as e:
+                print("[ERROR] followup 실패:", e)
 
 # === 버튼 뷰 ===
 class RecordView(View):
@@ -161,24 +167,23 @@ class RecordView(View):
 
 # === Slash Command 등록 함수 ===
 async def setup_commands():
-    # 운동팟 기록
-    @bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
+    guild_obj = discord.Object(id=GUILD_ID)
+
+    @bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=guild_obj)
     async def record_cmd(interaction: discord.Interaction):
         view = RecordView(interaction.user.id)
         await interaction.response.send_message(
             f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
         )
 
-    # 코코 부르기
-    @bot.tree.command(name="coco", description="coco..을 소환해요!", guild=discord.Object(id=GUILD_ID))
+    @bot.tree.command(name="coco", description="coco..을 소환해요!", guild=guild_obj)
     async def coco_command(interaction: discord.Interaction):
         if COCO_USER_ID:
             await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
         else:
             await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
 
-    # 추천 음악
-    @bot.tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!", guild=discord.Object(id=GUILD_ID))
+    @bot.tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!", guild=guild_obj)
     async def recommend_song(interaction: discord.Interaction):
         song = random.choice(SONG_LIST)
         await interaction.response.send_message(f"♬ 오늘의 추천 음악은...\n**{song}**..", ephemeral=False)
@@ -192,7 +197,6 @@ async def on_message(message: discord.Message):
     if message.attachments:
         print(f"[DEBUG] 첨부파일 감지: {message.attachments}")
 
-        # 스레드라면 참여 보장
         if isinstance(message.channel, discord.Thread):
             try:
                 await message.channel.join()
