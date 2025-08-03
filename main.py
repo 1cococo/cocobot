@@ -1,7 +1,6 @@
 import os
 import random
 import discord
-from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -51,7 +50,7 @@ intents.guilds = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            self.tree.clear_commands()
+            self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
             await setup_commands()
             synced = await self.tree.sync(guild=discord.Object(id=GUILD_ID))
             print("명령어 동기화 완료 (길드 전용)")
