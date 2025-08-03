@@ -129,8 +129,10 @@ class RecordModal(Modal, title="기록 입력"):
         )
         conn.commit()
 
-        await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
+        # defer 대신 send_message 사용
+        await interaction.response.send_message(
+            "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True
+        )
 
         thread = await get_user_thread(interaction.user)
         if thread:
