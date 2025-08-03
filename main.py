@@ -1,4 +1,5 @@
 import os
+import random
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -6,14 +7,11 @@ from discord.ui import Button, View, Modal, TextInput
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
 import datetime
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-GUILD_ID = int(os.getenv("GUILD_ID"))
 RECORD_CHANNEL_ID = int(os.getenv("RECORD_CHANNEL_ID"))  # 운동팟 포럼 채널 ID
-COCO_USER_ID = 710614752963067985
-
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
+COCO_USER_ID = int(os.getenv("COCO_USER_ID", 0))
 
 # 음악 리스트
 SONG_LIST = [
@@ -63,7 +61,6 @@ SONG_LIST = [
     "Even of Day(DAY6) - 뚫고 지나가요",
     "DAY6 - Love me or leave me",
 ]
-
 
 # DB 연결
 conn = psycopg2.connect(DATABASE_URL)
@@ -143,12 +140,27 @@ class RecordView(View):
 
 # === Slash Command 등록 함수 ===
 async def setup_commands():
+    # 운동팟 기록
     @bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다")
     async def record_cmd(interaction: discord.Interaction):
         view = RecordView(interaction.user.id)
         await interaction.response.send_message(
             f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
         )
+
+    # 코코 부르기
+    @bot.tree.command(name="coco", description="coco..을 소환해요!")
+    async def coco_command(interaction: discord.Interaction):
+        if COCO_USER_ID:
+            await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
+        else:
+            await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
+
+    # 추천 음악
+    @bot.tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!")
+    async def recommend_song(interaction: discord.Interaction):
+        song = random.choice(SONG_LIST)
+        await interaction.response.send_message(f"♬ 오늘의 추천 음악은...\n**{song}**..", ephemeral=False)
 
 # === 사진 처리 ===
 @bot.event
@@ -216,68 +228,17 @@ scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
 async def on_ready():
     print(f'Logged in as {bot.user}')
     try:
-        # 모든 전역/길드 커맨드 삭제 후 /기록만 다시 등록
-        bot.tree.clear_commands(guild=None)
-        bot.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
+        # 전역/길드 커맨드 정리 후 다시 등록
+        bot.tree.clear_commands()
         await setup_commands()
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("명령어 동기화 완료 (길드 전용)")
+        await bot.tree.sync()  # 전역 동기화
+        print("명령어 동기화 완료 (전역)")
+        print("등록된 커맨드 목록:", [c.name for c in bot.tree.get_commands()])
     except Exception as e:
         print(e)
 
     if not scheduler.running:
         scheduler.start()
         print("스케줄러 시작됨")
-
-
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))  # 특정 서버
-        await bot.tree.sync()  # 전역 싱크도 추가
-        print("명령어 동기화 완료")
-    except Exception as e:
-        print(e)
-
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("명령어 동기화 완료")
-    except Exception as e:
-        print(e)
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f'Synced {len(synced)} command(s)')
-    except Exception as e:
-        print(e)
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f'Synced {len(synced)} command(s)')
-    except Exception as e:
-        print(e)
-
-# === Slash Command ===
-
-@bot.tree.command(name="coco", description="coco..을 소환해요!", guild=discord.Object(id=GUILD_ID))
-async def coco_command(interaction: discord.Interaction):
-    await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
-
-@bot.tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!", guild=discord.Object(id=GUILD_ID))
-async def recommend_song(interaction: discord.Interaction):
-    song = random.choice(SONG_LIST)
-    await interaction.response.send_message(f"♬ 오늘의 추천 음악은...\n**{song}**..", ephemeral=False)
 
 bot.run(TOKEN)
