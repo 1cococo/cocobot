@@ -283,12 +283,6 @@ async def on_ready():
         print(e)
 
 # === Slash Command ===
-@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
-async def 기록(interaction: discord.Interaction):
-    view = RecordView(interaction.user.id)
-    await interaction.response.send_message(
-        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
-    )
 
 @bot.tree.command(name="coco", description="coco..을 소환해요!", guild=discord.Object(id=GUILD_ID))
 async def coco_command(interaction: discord.Interaction):
