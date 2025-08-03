@@ -64,19 +64,6 @@ SONG_LIST = [
     "DAY6 - Love me or leave me",
 ]
 
-import os
-import discord
-from discord import app_commands
-from discord.ext import commands
-from discord.ui import Button, View, Modal, TextInput
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import psycopg2
-import datetime
-
-TOKEN = os.getenv("DISCORD_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
-GUILD_ID = int(os.getenv("GUILD_ID"))
-RECORD_CHANNEL_ID = int(os.getenv("RECORD_CHANNEL_ID"))  # 운동팟 포럼 채널 ID
 
 # DB 연결
 conn = psycopg2.connect(DATABASE_URL)
@@ -228,7 +215,9 @@ scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
 async def on_ready():
     print(f'Logged in as {bot.user}')
     try:
+        # guild 전용 동기화 + 전역 동기화 둘 다 시도
         await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        await bot.tree.sync()
         print("명령어 동기화 완료")
     except Exception as e:
         print(e)
@@ -236,6 +225,7 @@ async def on_ready():
     if not scheduler.running:
         scheduler.start()
         print("스케줄러 시작됨")
+
 
 @bot.event
 async def on_ready():
