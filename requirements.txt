@@ -1,4 +1,5 @@
 discord.py==2.3.2
 psycopg2-binary
 SQLAlchemy
-apscheduler
+APScheduler
+
