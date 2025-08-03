@@ -86,6 +86,7 @@ class RecordModal(Modal, title="기록 입력"):
             (self.user_id, today, self.category, self.checklist.value, None)
         )
         conn.commit()
+        print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
         if not interaction.response.is_done():
             await interaction.response.send_message("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
         thread = await get_user_thread(interaction.user)
@@ -136,15 +137,23 @@ async def on_message(message: discord.Message):
                 await message.channel.join()
             except Exception as e:
                 print(f"[DEBUG] 스레드 참여 실패: {e}")
+        saved = False
         for attachment in message.attachments:
             image_url = attachment.url
             cur.execute("UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s",
                         (image_url, message.author.id, datetime.date.today()))
+            print(f"[DEBUG] 이미지 처리: user={message.author.id}, url={image_url}, rowcount={cur.rowcount}")
+            if cur.rowcount > 0:
+                saved = True
             conn.commit()
-        try:
-            await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! 📷")
-        except Exception as e:
-            print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
+        if saved:
+            try:
+                await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! 📷")
+                print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
+            except Exception as e:
+                print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
+        else:
+            print(f"[DEBUG] DB 업데이트 실패: user={message.author.id}")
     await bot.process_commands(message)
 
 async def weekly_report():
