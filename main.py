@@ -68,7 +68,7 @@ SONG_LIST = [
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
-# 테이블 생성 (최초 1번만 필요)
+# 테이블 생성
 cur.execute("""
 CREATE TABLE IF NOT EXISTS records (
     id SERIAL PRIMARY KEY,
@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS records (
 conn.commit()
 
 intents = discord.Intents.default()
+intents.message_content = True  # on_message 이벤트에서 첨부파일 감지하려면 필요
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # === Modal ===
@@ -95,23 +96,21 @@ class RecordModal(Modal, title="기록 입력"):
 
     async def on_submit(self, interaction: discord.Interaction):
         today = datetime.date.today()
-        # 첨부파일 URL (사진 업로드)
-        image_url = interaction.message.attachments[0].url if interaction.message and interaction.message.attachments else None
 
+        # DB에 텍스트 기록 저장 (사진은 이후 on_message에서 업데이트)
         cur.execute(
             "INSERT INTO records (user_id, date, category, checklist, image_url) VALUES (%s, %s, %s, %s, %s)",
-            (self.user_id, today, self.category, self.checklist.value, image_url)
+            (self.user_id, today, self.category, self.checklist.value, None)
         )
         conn.commit()
 
-        # 1) 사용자에게만 안내
-        await interaction.response.send_message("기록이 저장되었습니다!", ephemeral=True)
+        # 사용자 안내 (본인만)
+        await interaction.response.send_message("기록이 저장되었습니다! 사진이 있다면 이 채널에 업로드해주세요 📷", ephemeral=True)
 
-        # 2) 채널에도 기록 남기기
-        channel = bot.get_channel(운동팟채널ID)  # 이건 변수로 따로 저장해둬야 함
-        await channel.send(
-    f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}"
-)
+        # 채널에도 기록 메시지 남기기
+        channel = bot.get_channel(RECORD_CHANNEL_ID)
+        if channel:
+            await channel.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
 
 # === 버튼 뷰 ===
 class RecordView(View):
@@ -131,6 +130,30 @@ class RecordView(View):
     async def fast_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RecordModal("단식", self.user_id))
 
+# === Slash Command ===
+@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
+async def 기록(interaction: discord.Interaction):
+    view = RecordView(interaction.user.id)
+    await interaction.response.send_message(
+        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
+    )
+
+# === 사진 처리 ===
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+
+    if message.attachments:
+        image_url = message.attachments[0].url
+        cur.execute(
+            "UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s",
+            (image_url, message.author.id, datetime.date.today())
+        )
+        conn.commit()
+        await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! 📷")
+
+    await bot.process_commands(message)
 
 # === 스케줄러: 주간 요약 ===
 async def weekly_report():
@@ -169,37 +192,27 @@ async def weekly_report():
             else:
                 report += f"{day.strftime('%a')} : 기록없음\n"
 
-    # 주간 기록 채널에 보내기
     channel = bot.get_channel(RECORD_CHANNEL_ID)
     if channel:
         await channel.send(report)
 
-
-    # 요약 메시지 만들기
-    report = "**주간 운동팟 기록**\n"
-    user_records = {}
-    for row in rows:
-        user_id, date, category, checklist, image_url = row
-        if user_id not in user_records:
-            user_records[user_id] = {}
-        user_records[user_id][date] = (category, checklist, image_url)
-
-    for user_id, records in user_records.items():
-        report += f"\n<@{user_id}>의 기록\n"
-        for i in range(7):
-            day = start + datetime.timedelta(days=i)
-            if day in records:
-                cat, chk, img = records[day]
-                report += f"{day.strftime('%a')} : [{cat}] {chk} {img or ''}\n"
-            else:
-                report += f"{day.strftime('%a')} : 기록없음\n"
-
-    channel = bot.get_channel(RECORD_CHANNEL_ID)
-    if channel:
-        await channel.send(report)
-
-# 스케줄러 등록
+# 스케줄러 설정
 scheduler = AsyncIOScheduler()
+scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("명령어 동기화 완료")
+    except Exception as e:
+        print(e)
+
+    if not scheduler.running:
+        scheduler.start()
+        print("스케줄러 시작됨")
+
 
 @bot.event
 async def on_ready():
