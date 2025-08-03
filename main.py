@@ -167,7 +167,20 @@ async def weekly_report():
 # 스케줄러 등록
 scheduler = AsyncIOScheduler()
 scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
-scheduler.start()
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("명령어 동기화 완료")
+    except Exception as e:
+        print(e)
+
+    # 스케줄러를 여기서 시작
+    if not scheduler.running:
+        scheduler.start()
+        print("스케줄러 시작됨")
 
 
 
