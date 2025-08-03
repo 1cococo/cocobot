@@ -216,12 +216,12 @@ scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
 async def on_ready():
     print(f'Logged in as {bot.user}')
     try:
-        # Slash Command 강제 초기화 후 재등록
+        # 모든 전역/길드 커맨드 삭제 후 /기록만 다시 등록
+        bot.tree.clear_commands(guild=None)
         bot.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
         await setup_commands()
         await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        await bot.tree.sync()
-        print("명령어 동기화 완료")
+        print("명령어 동기화 완료 (길드 전용)")
     except Exception as e:
         print(e)
 
@@ -229,20 +229,6 @@ async def on_ready():
         scheduler.start()
         print("스케줄러 시작됨")
 
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    try:
-        # guild 전용 동기화 + 전역 동기화 둘 다 시도
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        await bot.tree.sync()
-        print("명령어 동기화 완료")
-    except Exception as e:
-        print(e)
-
-    if not scheduler.running:
-        scheduler.start()
-        print("스케줄러 시작됨")
 
 
 @bot.event
