@@ -82,6 +82,7 @@ conn.commit()
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
 
 # === 봇 클래스 정의 (setup_hook 사용) ===
 class CocoBot(commands.Bot):
@@ -101,17 +102,13 @@ class CocoBot(commands.Bot):
 
 bot = CocoBot(command_prefix="!", intents=intents)
 
-# === 포럼 스레드 찾기 (아카이브 포함) ===
+# === 포럼 스레드 찾기 (안전 모드: 아카이브 스레드 조회 제거) ===
 async def get_user_thread(user: discord.User | discord.Member):
     forum_channel = bot.get_channel(RECORD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    threads = list(forum_channel.threads)
-    async for archived in forum_channel.archived_threads(limit=None):
-        threads.append(archived)
-
-    for thread in threads:
+    for thread in forum_channel.threads:
         if str(user.id) in thread.name:
             return thread
     return None
@@ -194,6 +191,15 @@ async def on_message(message: discord.Message):
 
     if message.attachments:
         print(f"[DEBUG] 첨부파일 감지: {message.attachments}")
+
+        # 스레드라면 참여 보장
+        if isinstance(message.channel, discord.Thread):
+            try:
+                await message.channel.join()
+                print(f"[DEBUG] 스레드 참여 완료: {message.channel.id}")
+            except Exception as e:
+                print(f"[DEBUG] 스레드 참여 실패: {e}")
+
         for attachment in message.attachments:
             image_url = attachment.url
             cur.execute(
@@ -202,10 +208,12 @@ async def on_message(message: discord.Message):
             )
             conn.commit()
             print(f"[DEBUG] DB 업데이트 완료: user={message.author.id}, url={image_url}")
+
         try:
             await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! 📷")
+            print("[DEBUG] 사진 안내 메시지 전송 성공")
         except Exception as e:
-            print("사진 안내 메시지 전송 실패:", e)
+            print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
 
     await bot.process_commands(message)
 
