@@ -69,8 +69,8 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 유저 ID를 포함한 스레드 이름만 검색
-    target = str(user.id)
+    # 스레드 이름이 반드시 "(...user.id...)" 형식 포함
+    target = f"({user.id})"
     for thread in forum_channel.threads:
         if target in thread.name:
             return thread
