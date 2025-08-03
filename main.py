@@ -9,8 +9,8 @@ import datetime
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 GUILD_ID = int(os.getenv("GUILD_ID"))
+RECORD_CHANNEL_ID = int(os.getenv("RECORD_CHANNEL_ID"))  # 운동팟 포럼 채널 ID
 COCO_USER_ID = 710614752963067985
-RECORD_CHANNEL_ID = int(os.getenv("RECORD_CHANNEL_ID")) 
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -141,13 +141,14 @@ class RecordView(View):
     async def fast_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RecordModal("단식", self.user_id))
 
-# === Slash Command ===
-@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다")
-async def record_cmd(interaction: discord.Interaction):
-    view = RecordView(interaction.user.id)
-    await interaction.response.send_message(
-        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
-    )
+# === Slash Command 등록 함수 ===
+async def setup_commands():
+    @bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다")
+    async def record_cmd(interaction: discord.Interaction):
+        view = RecordView(interaction.user.id)
+        await interaction.response.send_message(
+            f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
+        )
 
 # === 사진 처리 ===
 @bot.event
@@ -210,6 +211,23 @@ async def weekly_report():
 
 scheduler = AsyncIOScheduler()
 scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        # Slash Command 강제 초기화 후 재등록
+        bot.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
+        await setup_commands()
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        await bot.tree.sync()
+        print("명령어 동기화 완료")
+    except Exception as e:
+        print(e)
+
+    if not scheduler.running:
+        scheduler.start()
+        print("스케줄러 시작됨")
 
 @bot.event
 async def on_ready():
