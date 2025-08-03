@@ -87,14 +87,18 @@ class RecordModal(Modal, title="기록 입력"):
         )
         conn.commit()
         print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
-        if not interaction.response.is_done():
+        try:
             await interaction.response.send_message("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
+        except Exception as e:
+            print("[DEBUG] 기록 저장 후 메시지 전송 실패:", e)
         thread = await get_user_thread(interaction.user)
         if thread:
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
-            if not interaction.response.is_done():
+            try:
                 await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.", ephemeral=True)
+            except Exception as e:
+                print("[DEBUG] followup 실패:", e)
 
 class RecordView(View):
     def __init__(self, user_id: int):
