@@ -69,14 +69,17 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 스레드 이름을 소문자로 변환 후 체크 (공백/형식 문제 방지)
+    # 스레드 목록 다시 불러오기 (활성+아카이브)
+    await forum_channel.fetch_archived_threads(limit=100)
+    threads = forum_channel.threads
+
     target = str(user.id)
-    for thread in forum_channel.threads:
+    for thread in threads:
         if target in thread.name:
             print(f"[DEBUG] 스레드 찾음: {thread.name}")
             return thread
 
-    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={[t.name for t in forum_channel.threads]}")
+    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={[t.name for t in threads]}")
     return None
 
 class RecordModal(Modal, title="기록 입력"):
