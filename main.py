@@ -160,8 +160,14 @@ async def on_message(message: discord.Message):
         saved = False
         for attachment in message.attachments:
             image_url = attachment.url
-            cur.execute("UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s",
-                        (image_url, message.author.id, datetime.date.today()))
+            # 가장 최근 기록만 업데이트
+            cur.execute("""
+                UPDATE records
+                SET image_url = %s
+                WHERE user_id = %s AND date = %s AND image_url IS NULL
+                ORDER BY id DESC LIMIT 1
+            """, (image_url, message.author.id, datetime.date.today()))
+
             print(f"[DEBUG] 이미지 처리: user={message.author.id}, url={image_url}, rowcount={cur.rowcount}")
             if cur.rowcount > 0:
                 saved = True
