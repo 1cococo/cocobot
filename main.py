@@ -69,13 +69,13 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 먼저 활성 스레드에서 찾기
+    # 활성 스레드에서 찾기
     for thread in forum_channel.threads:
         if str(user.id) in thread.name or user.display_name in thread.name or user.name in thread.name:
             return thread
 
-    # 아카이브된 스레드에서도 찾기
-    async for archived in forum_channel.archived_threads(limit=None):
+    # 아카이브된 스레드 (공개 + 비공개)에서 찾기
+    async for archived in forum_channel.archived_threads(limit=None, private=True):
         if str(user.id) in archived.name or user.display_name in archived.name or user.name in archived.name:
             return archived
 
@@ -96,7 +96,6 @@ class RecordModal(Modal, title="기록 입력"):
         conn.commit()
         print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
 
-        # interaction 응답 안정화
         await ensure_response(interaction, "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷")
 
         thread = await get_user_thread(interaction.user)
