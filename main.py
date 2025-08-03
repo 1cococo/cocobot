@@ -229,9 +229,9 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
     try:
         # 전역/길드 커맨드 정리 후 다시 등록
-        bot.tree.clear_commands()
+        bot.tree.clear_commands(guild=None)  # 전역 초기화
         await setup_commands()
-        await bot.tree.sync()  # 전역 동기화
+        await bot.tree.sync()  # 전역 싱크
         print("명령어 동기화 완료 (전역)")
         print("등록된 커맨드 목록:", [c.name for c in bot.tree.get_commands()])
     except Exception as e:
