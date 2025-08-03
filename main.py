@@ -74,16 +74,8 @@ async def get_user_thread(user: discord.User | discord.Member):
         if str(user.id) in thread.name or user.display_name in thread.name or user.name in thread.name:
             return thread
 
-    # 아카이브된 스레드 접근 시 권한 부족 문제 -> try/except 처리
-    try:
-        async for archived in forum_channel.archived_threads(limit=None):
-            if str(user.id) in archived.name or user.display_name in archived.name or user.name in archived.name:
-                return archived
-    except discord.Forbidden:
-        print("[DEBUG] 아카이브 스레드 접근 권한 없음")
-    except Exception as e:
-        print(f"[DEBUG] 아카이브 스레드 탐색 실패: {e}")
-
+    # 아카이브된 스레드 접근은 권한 없을 수 있으므로 제외
+    print("[DEBUG] 아카이브 스레드는 탐색하지 않음 (권한 문제 회피)")
     return None
 
 class RecordModal(Modal, title="기록 입력"):
