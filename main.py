@@ -71,18 +71,21 @@ async def get_user_thread(user: discord.User | discord.Member):
 
     threads = list(forum_channel.threads)
 
-    # 아카이브 스레드도 불러오기 (권한 없으면 무시)
-    try:
-        archived_threads = [t async for t in forum_channel.archived_threads(limit=50)]
-        threads.extend(archived_threads)
-    except Exception as e:
-        print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
-
+    # 스레드 이름 규칙: "닉네임(user_id)" 형태 확인
     target = str(user.id)
     for thread in threads:
-        if target in thread.name:
-            print(f"[DEBUG] 스레드 찾음: {thread.name}")
+        if thread.name.endswith(f"({target})"):
+            print(f"[DEBUG] 스레드 찾음 (규칙 매칭): {thread.name}")
             return thread
+
+    # 아카이브 스레드도 불러오기 (권한 없으면 무시)
+    try:
+        async for archived in forum_channel.archived_threads(limit=50):
+            if archived.name.endswith(f"({target})"):
+                print(f"[DEBUG] 아카이브 스레드 찾음 (규칙 매칭): {archived.name}")
+                return archived
+    except Exception as e:
+        print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
 
     print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={[t.name for t in threads]}")
     return None
