@@ -126,13 +126,6 @@ class RecordView(View):
     async def fast_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RecordModal("단식", self.user_id))
 
-# === Slash Command ===
-@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
-async def 기록(interaction: discord.Interaction):
-    view = RecordView(interaction.user.id)
-    await interaction.response.send_message(
-        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
-    )
 
 # === 스케줄러: 주간 요약 ===
 async def weekly_report():
@@ -176,6 +169,19 @@ scheduler = AsyncIOScheduler()
 scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
 scheduler.start()
 
+
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))  # 특정 서버
+        await bot.tree.sync()  # 전역 싱크도 추가
+        print("명령어 동기화 완료")
+    except Exception as e:
+        print(e)
+
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
@@ -193,6 +199,23 @@ async def on_ready():
         print(f'Synced {len(synced)} command(s)')
     except Exception as e:
         print(e)
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f'Synced {len(synced)} command(s)')
+    except Exception as e:
+        print(e)
+
+# === Slash Command ===
+@bot.tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=discord.Object(id=GUILD_ID))
+async def 기록(interaction: discord.Interaction):
+    view = RecordView(interaction.user.id)
+    await interaction.response.send_message(
+        f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True
+    )
 
 @bot.tree.command(name="coco", description="coco..을 소환해요!", guild=discord.Object(id=GUILD_ID))
 async def coco_command(interaction: discord.Interaction):
