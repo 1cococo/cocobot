@@ -88,16 +88,12 @@ class RecordModal(Modal, title="기록 입력"):
         conn.commit()
         print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
 
-        if not interaction.response.is_done():
-            try:
-                await interaction.response.send_message("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
-            except Exception as e:
-                print("[DEBUG] 기록 저장 후 메시지 전송 실패:", e)
-        else:
-            try:
-                await interaction.followup.send("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
-            except Exception as e:
-                print("[DEBUG] followup 실패:", e)
+        # 항상 followup 메시지를 사용하도록 변경 (interaction response 충돌 방지)
+        try:
+            await interaction.followup.send("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
+            print("[DEBUG] followup 메시지 전송 성공")
+        except Exception as e:
+            print("[DEBUG] 기록 저장 후 메시지 전송 실패:", e)
 
         thread = await get_user_thread(interaction.user)
         if thread:
