@@ -88,13 +88,9 @@ class RecordModal(Modal, title="기록 입력"):
         conn.commit()
         print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
 
+        # interaction 응답 안정화: ensure_response 방식 사용
         try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
-                print("[DEBUG] response 메시지 전송 성공")
-            else:
-                await interaction.followup.send("기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True)
-                print("[DEBUG] followup 메시지 전송 성공")
+            await ensure_response(interaction, "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷")
         except Exception as e:
             print("[DEBUG] 기록 저장 후 메시지 전송 실패:", e)
 
@@ -103,9 +99,17 @@ class RecordModal(Modal, title="기록 입력"):
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
             try:
-                await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.", ephemeral=True)
+                await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.")
             except Exception as e:
                 print("[DEBUG] followup 실패:", e)
+
+async def ensure_response(interaction: discord.Interaction, content: str):
+    if not interaction.response.is_done():
+        await interaction.response.send_message(content, ephemeral=True)
+        print("[DEBUG] response 메시지 전송 성공")
+    else:
+        await interaction.followup.send(content, ephemeral=True)
+        print("[DEBUG] followup 메시지 전송 성공")
 
 class RecordView(View):
     def __init__(self, user_id: int):
