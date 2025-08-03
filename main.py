@@ -69,7 +69,7 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
     for thread in forum_channel.threads:
-        if str(user.id) in thread.name:
+        if str(user.id) in thread.name or str(user.display_name) in thread.name:
             return thread
     return None
 
@@ -88,13 +88,14 @@ class RecordModal(Modal, title="기록 입력"):
         conn.commit()
         print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
 
-        # interaction 응답 안정화: ensure_response 방식 사용
+        # interaction 응답 안정화
         await ensure_response(interaction, "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷")
 
         thread = await get_user_thread(interaction.user)
         if thread:
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
+            print(f"[DEBUG] 스레드 없음: user={interaction.user.id}, name={interaction.user.display_name}")
             await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다.")
 
 async def ensure_response(interaction: discord.Interaction, content: str):
