@@ -69,19 +69,14 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 활성 스레드에서 찾기 (아카이브는 제외)
+    # 활성 스레드에서 찾기
     for thread in forum_channel.threads:
         if str(user.id) in thread.name or user.display_name in thread.name or user.name in thread.name:
             return thread
 
-    # 스레드를 찾을 수 없을 때: 새 스레드 생성
-    try:
-        thread = await forum_channel.create_thread(name=f"{user.display_name} ({user.id}) 기록", content=f"{user.mention}의 운동팟 기록 스레드입니다!")
-        print(f"[DEBUG] 새 스레드 생성: {thread.name}")
-        return thread
-    except Exception as e:
-        print(f"[DEBUG] 스레드 생성 실패: {e}")
-        return None
+    # 스레드를 찾을 수 없을 때는 None 반환 (새로 만들지 않음)
+    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}")
+    return None
 
 class RecordModal(Modal, title="기록 입력"):
     checklist = TextInput(label="오늘 기록 (운동/식단/단식)", style=discord.TextStyle.paragraph)
@@ -104,8 +99,7 @@ class RecordModal(Modal, title="기록 입력"):
         if thread:
             await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 올려주세요 📷)")
         else:
-            print(f"[DEBUG] 스레드 없음 및 생성 실패: user={interaction.user.id}, name={interaction.user.display_name}")
-            await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없고 새로 만들지도 못했습니다.")
+            await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.")
 
 async def ensure_response(interaction: discord.Interaction, content: str):
     try:
