@@ -101,13 +101,18 @@ class CocoBot(commands.Bot):
 
 bot = CocoBot(command_prefix="!", intents=intents)
 
-# === 포럼 스레드 찾기 ===
+# === 포럼 스레드 찾기 (아카이브 포함) ===
 async def get_user_thread(user: discord.User | discord.Member):
     forum_channel = bot.get_channel(RECORD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
-    for thread in forum_channel.threads:
-        if str(user.id) in thread.name:  # 스레드 이름에 user_id 포함시 매칭
+
+    threads = list(forum_channel.threads)
+    async for archived in forum_channel.archived_threads(limit=None):
+        threads.append(archived)
+
+    for thread in threads:
+        if str(user.id) in thread.name:
             return thread
     return None
 
@@ -129,7 +134,6 @@ class RecordModal(Modal, title="기록 입력"):
         )
         conn.commit()
 
-        # defer 대신 send_message 사용
         await interaction.response.send_message(
             "기록이 저장되었습니다! 사진이 있다면 이 포스트에 올려주세요 📷", ephemeral=True
         )
@@ -189,6 +193,7 @@ async def on_message(message: discord.Message):
         return
 
     if message.attachments:
+        print(f"[DEBUG] 첨부파일 감지: {message.attachments}")
         for attachment in message.attachments:
             image_url = attachment.url
             cur.execute(
@@ -196,6 +201,7 @@ async def on_message(message: discord.Message):
                 (image_url, message.author.id, datetime.date.today())
             )
             conn.commit()
+            print(f"[DEBUG] DB 업데이트 완료: user={message.author.id}, url={image_url}")
         try:
             await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! 📷")
         except Exception as e:
