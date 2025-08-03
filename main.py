@@ -74,8 +74,8 @@ async def get_user_thread(user: discord.User | discord.Member):
         if str(user.id) in thread.name or user.display_name in thread.name or user.name in thread.name:
             return thread
 
-    # 아카이브된 스레드 (공개 + 비공개)에서 찾기
-    async for archived in forum_channel.archived_threads(limit=None, private=True):
+    # 아카이브된 스레드에서 찾기 (private 인자 제거)
+    async for archived in forum_channel.archived_threads(limit=None):
         if str(user.id) in archived.name or user.display_name in archived.name or user.name in archived.name:
             return archived
 
