@@ -104,9 +104,14 @@ class RecordModal(Modal, title="기록 입력"):
         )
         conn.commit()
 
-        await interaction.response.send_message(
-            f"{interaction.user.display_name}님의 [{self.category}] 기록이 저장되었습니다!", ephemeral=True
-        )
+        # 1) 사용자에게만 안내
+        await interaction.response.send_message("기록이 저장되었습니다!", ephemeral=True)
+
+        # 2) 채널에도 기록 남기기
+        channel = bot.get_channel(운동팟채널ID)  # 이건 변수로 따로 저장해둬야 함
+        await channel.send(
+    f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}"
+)
 
 # === 버튼 뷰 ===
 class RecordView(View):
@@ -141,6 +146,35 @@ async def weekly_report():
     """, (start, end))
     rows = cur.fetchall()
 
+    # 데이터 정리
+    user_records = {}
+    for row in rows:
+        user_id, date, category, checklist, image_url = row
+        if user_id not in user_records:
+            user_records[user_id] = {}
+        user_records[user_id][date] = (category, checklist, image_url)
+
+    # 리포트 메시지 생성
+    report = "**📋 이번 주 운동팟 기록 요약**\n"
+    for user_id, records in user_records.items():
+        report += f"\n<@{user_id}>의 주간 기록\n"
+        for i in range(7):  # 월~일 반복
+            day = start + datetime.timedelta(days=i)
+            if day in records:
+                cat, chk, img = records[day]
+                if img:
+                    report += f"{day.strftime('%a')} : [{cat}] {chk}\n📷 {img}\n"
+                else:
+                    report += f"{day.strftime('%a')} : [{cat}] {chk}\n"
+            else:
+                report += f"{day.strftime('%a')} : 기록없음\n"
+
+    # 주간 기록 채널에 보내기
+    channel = bot.get_channel(RECORD_CHANNEL_ID)
+    if channel:
+        await channel.send(report)
+
+
     # 요약 메시지 만들기
     report = "**주간 운동팟 기록**\n"
     user_records = {}
@@ -166,7 +200,6 @@ async def weekly_report():
 
 # 스케줄러 등록
 scheduler = AsyncIOScheduler()
-scheduler.add_job(weekly_report, "cron", day_of_week="sun", hour=23, minute=59)
 
 @bot.event
 async def on_ready():
@@ -182,6 +215,20 @@ async def on_ready():
         scheduler.start()
         print("스케줄러 시작됨")
 
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    
+    if message.attachments:
+        image_url = message.attachments[0].url
+        # DB에서 오늘 날짜 + user_id 기록 찾기
+        cur.execute(
+            "UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s",
+            (image_url, message.author.id, datetime.date.today())
+        )
+        conn.commit()
+        await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
 
 
 @bot.event
