@@ -69,12 +69,11 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 활성 스레드와 아카이브 스레드 모두 확인
     threads = list(forum_channel.threads)
 
     try:
-        archived = await forum_channel.archived_threads(limit=100).flatten()
-        threads.extend(archived)
+        async for archived in forum_channel.archived_threads(limit=50):
+            threads.append(archived)
     except Exception as e:
         print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
 
