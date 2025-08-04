@@ -14,7 +14,51 @@ RECORD_CHANNEL_IDS = [int(cid.strip()) for cid in os.getenv("RECORD_CHANNEL_IDS"
 COCO_USER_ID = int(os.getenv("COCO_USER_ID", 0))
 
 SONG_LIST = [
-    # ... 동일 ...
+    "실리카겔 - APEX",
+    "Hoshino Gen - Fushigi",
+    "넥스트 - 도시인",
+    "Daryl Hall & John Oates - Rich Girl",
+    "윤상 - 달리기",
+    "DAY6 - Healer",
+    "Young K - Let it be summer",
+    "DAY6 - 행복했던 날들이었다",
+    "PE'Z - Akatsuki",
+    "고고학 - 파도",
+    "김승주 - 케이크가 불쌍해",
+    "솔루션스 - DNCM",
+    "원필 - 행운을 빌어줘",
+    "Shibata Jun - 救世主(구세주)",
+    "H.O.T - 오늘도 짜증나는 날이네",
+    "Aiko - 相思相愛(상사상애)",
+    "Porter Robinson - Flicker",
+    "WEDNESDAY CAMPANELLA - Ghost and Writer",
+    "Porter Robinson - Shelter",
+    "King gnu - 白日(백일)",
+    "Jazztronik - Samurai",
+    "The Internet - Under Control",
+    "The Delfonics - La-La Means I Love You",
+    "OFFICIAL HIGE DANDISM - Universe",
+    "Fuji Faze - きらり(반짝)",
+    "Do As Infinity - Oasis",
+    "LUCKY TAPES - Gravity",
+    "東京事変 - 修羅場",
+    "Nirvana - Smells Like Teen Spirit",
+    "Blood Orange - Time Will Tell",
+    "Chatmonchy - 恋愛スピリッツ(연애스피릿츠)",
+    "QURULI - 東京",
+    "Flight Facilities - Stranded",
+    "Avicii - Waiting For Love",
+    "Anymore - Life Is Party",
+    "Weezer - The world has turned and left me here",
+    "YUKI - Cosmic Box",
+    "Base Ball Bear - Stand By Me",
+    "Fujifabric - Sugar!!",
+    "GRAPEVIEN - Tori",
+    "ELLEGARDEN - My Favorite Song",
+    "Lily Chou Chou - Glider",
+    "Scott Wilkie - Water Balloons",
+    "Even of Day(DAY6) - 뚫고 지나가요",
+    "DAY6 - Love me or leave me",
 ]
 
 conn = psycopg2.connect(DATABASE_URL)
@@ -56,10 +100,12 @@ class CocoBot(commands.Bot):
 bot = CocoBot(command_prefix="!", intents=intents)
 
 async def get_user_thread(user: discord.User | discord.Member):
+    found_forum = None
     for cid in RECORD_CHANNEL_IDS:
         forum_channel = bot.get_channel(cid)
         if not isinstance(forum_channel, discord.ForumChannel):
             continue
+        found_forum = forum_channel
 
         try:
             threads = forum_channel.threads
@@ -81,7 +127,14 @@ async def get_user_thread(user: discord.User | discord.Member):
         except Exception as e:
             print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
 
-    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={[t.name for t in forum_channel.threads]}")
+    if found_forum:
+        try:
+            thread_names = [t.name for t in found_forum.threads]
+        except Exception:
+            thread_names = []
+        print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={thread_names}")
+    else:
+        print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, forum_channel=None")
     return None
 
 class RecordModal(Modal, title="기록 입력"):
