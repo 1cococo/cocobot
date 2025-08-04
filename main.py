@@ -112,7 +112,7 @@ class RecordModal(Modal, title="기록 입력"):
 
         thread = await get_user_thread(interaction.user)
         if thread:
-            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : {self.checklist.value}\n(사진은 이 메시지 아래에 한장만 올려주세요 📷)")
+            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n(사진은 이 메시지 아래에 한장만 올려주세요 📷)")
         else:
             await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.")
 
@@ -195,7 +195,7 @@ async def on_message(message: discord.Message):
             conn.commit()
         if saved:
             try:
-                await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! (한 장만 업로드 가능합니다 📷)")
+                await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
                 print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
             except Exception as e:
                 print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
@@ -211,7 +211,7 @@ async def weekly_report():
         SELECT user_id, date, category, checklist, image_url
         FROM records
         WHERE date BETWEEN %s AND %s
-        ORDER BY user_id, date
+        ORDER BY user_id, date, id
     """, (start, end))
     rows = cur.fetchall()
     user_records = {}
@@ -219,7 +219,9 @@ async def weekly_report():
         user_id, date, category, checklist, image_url = row
         if user_id not in user_records:
             user_records[user_id] = {}
-        user_records[user_id][date] = (category, checklist, image_url)
+        if date not in user_records[user_id]:
+            user_records[user_id][date] = []
+        user_records[user_id][date].append((category, checklist, image_url))
     for user_id, records in user_records.items():
         thread = await get_user_thread(await bot.fetch_user(user_id))
         if not thread:
@@ -228,11 +230,11 @@ async def weekly_report():
         for i in range(7):
             day = start + datetime.timedelta(days=i)
             if day in records:
-                cat, chk, img = records[day]
-                if img:
-                    report += f"{day.strftime('%a')} : [{cat}] {chk}\n📷 {img}\n"
-                else:
-                    report += f"{day.strftime('%a')} : [{cat}] {chk}\n"
+                for cat, chk, img in records[day]:
+                    if img:
+                        report += f"{day.strftime('%a')} : [{cat}] {chk}\n📷 {img}\n"
+                    else:
+                        report += f"{day.strftime('%a')} : [{cat}] {chk}\n"
             else:
                 report += f"{day.strftime('%a')} : 기록없음\n"
         await thread.send(report)
