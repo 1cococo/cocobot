@@ -39,10 +39,12 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            await self.tree.sync()
+            # 전역 명령어 제거
             self.tree.clear_commands(guild=None)
+            await self.tree.sync(guild=None)
             print("[DEBUG] 전역 명령어 초기화 완료")
 
+            # 길드 전용 명령어 등록
             await setup_commands(self.tree, GUILD_IDS)
             for gid in GUILD_IDS:
                 synced = await self.tree.sync(guild=discord.Object(id=gid))
@@ -165,7 +167,6 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
     if message.attachments:
-        # 해당 채널이 지정된 기록 채널/스레드인지 확인
         if isinstance(message.channel, discord.Thread) and message.channel.parent_id in RECORD_CHANNEL_IDS:
             try:
                 await message.channel.join()
