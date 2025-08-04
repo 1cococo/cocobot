@@ -1,4 +1,3 @@
-```python
 import os
 import asyncio
 import discord
@@ -148,54 +147,13 @@ async def coco(interaction: discord.Interaction):
 @tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 추천음악(interaction: discord.Interaction):
     import random
- SONG_LIST = [
-    "실리카겔 - APEX",
-    "Hoshino Gen - Fushigi",
-    "넥스트 - 도시인",
-    "Daryl Hall & John Oates - Rich Girl",
-    "윤상 - 달리기",
-    "DAY6 - Healer",
-    "Young K - Let it be summer",
-    "DAY6 - 행복했던 날들이었다",
-    "PE'Z - Akatsuki",
-    "고고학 - 파도",
-    "김승주 - 케이크가 불쌍해",
-    "솔루션스 - DNCM",
-    "원필 - 행운을 빌어줘",
-    "Shibata Jun - 救世主(구세주)",
-    "H.O.T - 오늘도 짜증나는 날이네",
-    "Aiko - 相思相愛(상사상애)",
-    "Porter Robinson - Flicker",
-    "WEDNESDAY CAMPANELLA - Ghost and Writer",
-    "Porter Robinson - Shelter",
-    "King gnu - 白日(백일)",
-    "Jazztronik - Samurai",
-    "The Internet - Under Control",
-    "The Delfonics - La-La Means I Love You",
-    "OFFICIAL HIGE DANDISM - Universe",
-    "Fuji Faze - きらり(반짝)",
-    "Do As Infinity - Oasis",
-    "LUCKY TAPES - Gravity",
-    "東京事変 - 修羅場",
-    "Nirvana - Smells Like Teen Spirit",
-    "Blood Orange - Time Will Tell",
-    "Chatmonchy - 恋愛スピリッツ(연애스피릿츠)",
-    "QURULI - 東京",
-    "Flight Facilities - Stranded",
-    "Avicii - Waiting For Love",
-    "Anymore - Life Is Party",
-    "Weezer - The world has turned and left me here",
-    "YUKI - Cosmic Box",
-    "Base Ball Bear - Stand By Me",
-    "Fujifabric - Sugar!!",
-    "GRAPEVIEN - Tori",
-    "ELLEGARDEN - My Favorite Song",
-    "Lily Chou Chou - Glider",
-    "Scott Wilkie - Water Balloons",
-    "Even of Day(DAY6) - 뚫고 지나가요",
-    "DAY6 - Love me or leave me",
-]
-
+    songs = [
+        "아이유 - 좋은 날",
+        "BTS - Dynamite",
+        "뉴진스 - Hype Boy",
+        "세븐틴 - Super",
+        "르세라핌 - ANTIFRAGILE"
+    ]
     song = random.choice(songs)
     await interaction.response.send_message(f"오늘의 추천 음악은: **{song}**", ephemeral=True)
 
@@ -238,4 +196,3 @@ async def on_ready():
 if __name__ == "__main__":
     init_db()
     client.run(TOKEN)
-```
