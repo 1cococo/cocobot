@@ -51,6 +51,12 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
+            # 전역 커맨드 싹 초기화 (최초 실행 시 전역에 남아있는 커맨드 삭제)
+            self.tree.clear_commands()
+            await self.tree.sync()
+            print("전역 커맨드 초기화 완료")
+
+            # 길드 전용 커맨드만 등록
             self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
             await setup_commands(self.tree, GUILD_ID)
             synced = await self.tree.sync(guild=discord.Object(id=GUILD_ID))
@@ -112,7 +118,7 @@ class RecordModal(Modal, title="기록 입력"):
 
         thread = await get_user_thread(interaction.user)
         if thread:
-            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n(사진은 이 메시지 아래에 한장만 올려주세요 📷)")
+            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n")
         else:
             await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.")
 
