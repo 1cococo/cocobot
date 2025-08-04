@@ -100,12 +100,10 @@ class CocoBot(commands.Bot):
 bot = CocoBot(command_prefix="!", intents=intents)
 
 async def get_user_thread(user: discord.User | discord.Member):
-    found_forum = None
     for cid in RECORD_CHANNEL_IDS:
         forum_channel = bot.get_channel(cid)
         if not isinstance(forum_channel, discord.ForumChannel):
             continue
-        found_forum = forum_channel
 
         try:
             threads = forum_channel.threads
@@ -127,14 +125,8 @@ async def get_user_thread(user: discord.User | discord.Member):
         except Exception as e:
             print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
 
-    if found_forum:
-        try:
-            thread_names = [t.name for t in found_forum.threads]
-        except Exception:
-            thread_names = []
-        print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={thread_names}")
-    else:
-        print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, forum_channel=None")
+        thread_names = [t.name for t in threads] if threads else []
+        print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={thread_names}, forum_channel={forum_channel.name}")
     return None
 
 class RecordModal(Modal, title="기록 입력"):
