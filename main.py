@@ -70,13 +70,13 @@ async def get_user_thread(user: discord.User | discord.Member):
 
         target = str(user.id)
         for thread in threads:
-            if f"({target})" in thread.name:
+            if target in thread.name:
                 print(f"[DEBUG] 스레드 찾음 (규칙 매칭): {thread.name}")
                 return thread
 
         try:
             async for archived in forum_channel.archived_threads(limit=50):
-                if f"({target})" in archived.name:
+                if target in archived.name:
                     print(f"[DEBUG] 아카이브 스레드 찾음 (규칙 매칭): {archived.name}")
                     return archived
         except Exception as e:
