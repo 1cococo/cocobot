@@ -39,7 +39,6 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            # 각 길드마다 명령어 초기화 후 등록
             for gid in GUILD_IDS:
                 guild_obj = discord.Object(id=gid)
                 self.tree.clear_commands(guild=guild_obj)
@@ -82,7 +81,7 @@ async def get_user_thread(user: discord.User | discord.Member):
         except Exception as e:
             print(f"[DEBUG] 아카이브 스레드 불러오기 실패: {e}")
 
-    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}")
+    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}, threads={[t.name for t in forum_channel.threads]}")
     return None
 
 class RecordModal(Modal, title="기록 입력"):
