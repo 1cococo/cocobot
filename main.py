@@ -39,14 +39,9 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            # 전역 명령어 제거
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync(guild=None)
-            print("[DEBUG] 전역 명령어 초기화 완료")
-
-            # 길드 전용 명령어 등록
-            await setup_commands(self.tree, GUILD_IDS)
+            # 전역 명령어 초기화 제거 (전역 sync 대신 길드만)
             for gid in GUILD_IDS:
+                await setup_commands(self.tree, gid)
                 synced = await self.tree.sync(guild=discord.Object(id=gid))
                 print(f"명령어 동기화 완료 (길드 전용 {gid})")
                 print("등록된 커맨드 목록:", [c.name for c in synced])
@@ -107,7 +102,7 @@ class RecordModal(Modal, title="기록 입력"):
 
         thread = await get_user_thread(interaction.user)
         if thread:
-            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n")
+            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n(사진은 이 메시지 아래에 한장만 올려주세요 📷)")
         else:
             await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.")
 
@@ -136,31 +131,30 @@ class RecordView(View):
     async def fast_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RecordModal("단식", self.user_id))
 
-async def setup_commands(tree, guild_ids):
-    for gid in guild_ids:
-        guild_obj = discord.Object(id=gid)
+async def setup_commands(tree, gid):
+    guild_obj = discord.Object(id=gid)
 
-        @tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=guild_obj)
-        async def record_cmd(interaction: discord.Interaction):
-            view = RecordView(interaction.user.id)
-            await interaction.response.send_message(f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True)
+    @tree.command(name="기록", description="오늘의 운동/식단/단식을 기록합니다", guild=guild_obj)
+    async def record_cmd(interaction: discord.Interaction):
+        view = RecordView(interaction.user.id)
+        await interaction.response.send_message(f"{interaction.user.mention} 오늘의 기록을 선택하세요!", view=view, ephemeral=True)
 
-        @tree.command(name="coco", description="coco..을 소환해요!", guild=guild_obj)
-        async def coco_command(interaction: discord.Interaction):
-            if COCO_USER_ID:
-                await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
-            else:
-                await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
+    @tree.command(name="coco", description="coco..을 소환해요!", guild=guild_obj)
+    async def coco_command(interaction: discord.Interaction):
+        if COCO_USER_ID:
+            await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
+        else:
+            await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
 
-        @tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!", guild=guild_obj)
-        async def recommend_song(interaction: discord.Interaction):
-            song = random.choice(SONG_LIST)
-            await interaction.response.send_message(f"♬ 오늘의 추천 음악은...\n**{song}**..", ephemeral=False)
+    @tree.command(name="추천음악", description="랜덤으로 음악을 추천해드려요!", guild=guild_obj)
+    async def recommend_song(interaction: discord.Interaction):
+        song = random.choice(SONG_LIST)
+        await interaction.response.send_message(f"♬ 오늘의 추천 음악은...\n**{song}**..", ephemeral=False)
 
-        @tree.command(name="주간기록", description="이번 주 기록 요약을 강제로 보여줍니다", guild=guild_obj)
-        async def manual_weekly(interaction: discord.Interaction):
-            await interaction.response.send_message("📋 주간 요약 테스트 시작!", ephemeral=True)
-            await weekly_report()
+    @tree.command(name="주간기록", description="이번 주 기록 요약을 강제로 보여줍니다", guild=guild_obj)
+    async def manual_weekly(interaction: discord.Interaction):
+        await interaction.response.send_message("📋 주간 요약 테스트 시작!", ephemeral=True)
+        await weekly_report()
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -191,7 +185,7 @@ async def on_message(message: discord.Message):
                 conn.commit()
             if saved:
                 try:
-                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
+                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! (한 장만 업로드 가능합니다 📷)")
                     print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
                 except Exception as e:
                     print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
