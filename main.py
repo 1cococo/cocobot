@@ -70,12 +70,12 @@ async def get_user_thread(user: discord.User | discord.Member):
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    # 최신 active_threads 가져오기 (일반 threads는 오래된 정보일 수 있음)
+    # 최신 threads 가져오기 (active_threads()는 없으므로 threads 사용)
     try:
-        threads = await forum_channel.active_threads()
-    except Exception as e:
-        print(f"[DEBUG] active_threads 불러오기 실패: {e}")
         threads = forum_channel.threads
+    except Exception as e:
+        print(f"[DEBUG] threads 불러오기 실패: {e}")
+        threads = []
 
     # 스레드 이름 규칙: "닉네임(user_id)" 형태 확인
     target = str(user.id)
@@ -174,12 +174,15 @@ async def on_message(message: discord.Message):
         saved = False
         for attachment in message.attachments:
             image_url = attachment.url
-            # 가장 최근 기록만 업데이트
+            # 가장 최근 기록만 업데이트 (Postgres에서는 서브쿼리 활용)
             cur.execute("""
                 UPDATE records
                 SET image_url = %s
-                WHERE user_id = %s AND date = %s AND image_url IS NULL
-                ORDER BY id DESC LIMIT 1
+                WHERE id = (
+                    SELECT id FROM records
+                    WHERE user_id = %s AND date = %s AND image_url IS NULL
+                    ORDER BY id DESC LIMIT 1
+                )
             """, (image_url, message.author.id, datetime.date.today()))
 
             print(f"[DEBUG] 이미지 처리: user={message.author.id}, url={image_url}, rowcount={cur.rowcount}")
