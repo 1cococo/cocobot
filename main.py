@@ -39,10 +39,12 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            # 전역 명령어 초기화 제거 (전역 sync 대신 길드만)
+            # 각 길드마다 명령어 초기화 후 등록
             for gid in GUILD_IDS:
+                guild_obj = discord.Object(id=gid)
+                self.tree.clear_commands(guild=guild_obj)
                 await setup_commands(self.tree, gid)
-                synced = await self.tree.sync(guild=discord.Object(id=gid))
+                synced = await self.tree.sync(guild=guild_obj)
                 print(f"명령어 동기화 완료 (길드 전용 {gid})")
                 print("등록된 커맨드 목록:", [c.name for c in synced])
         except Exception as e:
@@ -68,13 +70,13 @@ async def get_user_thread(user: discord.User | discord.Member):
 
         target = str(user.id)
         for thread in threads:
-            if thread.name.strip().endswith(f"({target})"):
+            if f"({target})" in thread.name:
                 print(f"[DEBUG] 스레드 찾음 (규칙 매칭): {thread.name}")
                 return thread
 
         try:
             async for archived in forum_channel.archived_threads(limit=50):
-                if archived.name.strip().endswith(f"({target})"):
+                if f"({target})" in archived.name:
                     print(f"[DEBUG] 아카이브 스레드 찾음 (규칙 매칭): {archived.name}")
                     return archived
         except Exception as e:
@@ -102,7 +104,7 @@ class RecordModal(Modal, title="기록 입력"):
 
         thread = await get_user_thread(interaction.user)
         if thread:
-            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n(사진은 이 메시지 아래에 한장만 올려주세요 📷)")
+            await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}\n")
         else:
             await ensure_response(interaction, "⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.")
 
@@ -185,7 +187,7 @@ async def on_message(message: discord.Message):
                 conn.commit()
             if saved:
                 try:
-                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다! (한 장만 업로드 가능합니다 📷)")
+                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
                     print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
                 except Exception as e:
                     print("[DEBUG] 사진 안내 메시지 전송 실패:", e)
