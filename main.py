@@ -51,12 +51,12 @@ intents.members = True
 class CocoBot(commands.Bot):
     async def setup_hook(self):
         try:
-            # 전역 커맨드 싹 초기화 (최초 실행 시 전역에 남아있는 커맨드 삭제)
-            self.tree.clear_commands()
+            # 먼저 전역 명령어 삭제 시도
             await self.tree.sync()
-            print("전역 커맨드 초기화 완료")
+            self.tree.clear_commands(guild=None)
+            print("[DEBUG] 전역 명령어 초기화 완료")
 
-            # 길드 전용 커맨드만 등록
+            # 길드 전용 명령어 등록
             await setup_commands(self.tree, GUILD_ID)
             synced = await self.tree.sync(guild=discord.Object(id=GUILD_ID))
             print("명령어 동기화 완료 (길드 전용)")
