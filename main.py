@@ -2,7 +2,7 @@ import os
 import asyncio
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import psycopg2
 from datetime import datetime, timedelta
 
@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_IDS = [int(g) for g in os.getenv("GUILD_ID", "").split(",")]
 RECORD_CHANNEL_IDS = [int(c) for c in os.getenv("RECORD_CHANNEL_ID", "").split(",")]
-
 DB_URL = os.getenv("DATABASE_URL")
 
 # DB 연결
@@ -21,9 +20,7 @@ def get_db_connection():
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
-client = commands.Bot(command_prefix="!", intents=intents)
-
-tree = app_commands.CommandTree(client)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # DB 초기화
 def init_db():
@@ -102,7 +99,7 @@ class RecordModal(discord.ui.Modal, title="기록 작성"):
             print(f"[DEBUG] 스레드 없음: user={interaction.user.id}, name={interaction.user.display_name}")
 
 # slash command - 기록
-@tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+@bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 기록(interaction: discord.Interaction):
     view = discord.ui.View()
     for category in ["운동", "식단", "단식"]:
@@ -117,7 +114,7 @@ async def 기록(interaction: discord.Interaction):
     await interaction.response.send_message("오늘의 기록을 선택하세요!", view=view, ephemeral=True)
 
 # slash command - 주간 기록
-@tree.command(name="주간기록", description="이번 주 기록 요약", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+@bot.tree.command(name="주간기록", description="이번 주 기록 요약", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 주간기록(interaction: discord.Interaction):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -139,12 +136,12 @@ async def 주간기록(interaction: discord.Interaction):
     await interaction.response.send_message(f"이번 주 기록 요약:\n{summary}", ephemeral=True)
 
 # slash command - coco 호출
-@tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+@bot.tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def coco(interaction: discord.Interaction):
     await interaction.response.send_message("네! 코코입니다~!", ephemeral=True)
 
 # slash command - 추천 음악
-@tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+@bot.tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 추천음악(interaction: discord.Interaction):
     import random
     songs = [
@@ -158,41 +155,41 @@ async def 추천음악(interaction: discord.Interaction):
     await interaction.response.send_message(f"오늘의 추천 음악은: **{song}**", ephemeral=True)
 
 # 메시지 이벤트 - 사진 저장
-@client.event
+@bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
     if message.channel.type == discord.ChannelType.public_thread:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE records SET image_url = %s WHERE user_id = %s ORDER BY id DESC LIMIT 1",
-            (str(message.attachments[0].url) if message.attachments else None, message.author.id)
-        )
-        conn.commit()
-        rowcount = cur.rowcount
-        cur.close()
-        conn.close()
+        if message.attachments:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE records SET image_url = %s WHERE user_id = %s ORDER BY id DESC LIMIT 1",
+                (str(message.attachments[0].url), message.author.id)
+            )
+            conn.commit()
+            rowcount = cur.rowcount
+            cur.close()
+            conn.close()
 
-        print(f"[DEBUG] 이미지 처리: user={message.author.id}, url={message.attachments[0].url if message.attachments else None}, rowcount={rowcount}")
+            print(f"[DEBUG] 이미지 처리: user={message.author.id}, url={message.attachments[0].url}, rowcount={rowcount}")
 
-        if rowcount > 0:
-            await message.channel.send("✅ 사진이 기록에 추가되었습니다!")
+            if rowcount > 0:
+                await message.channel.send("✅ 사진이 기록에 추가되었습니다!")
 
 # setup
-@client.event
+@bot.event
 async def setup_hook():
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-        tree.copy_global_to(guild=guild)
-        await tree.sync(guild=guild)
+        await bot.tree.sync(guild=guild)
     print("명령어 동기화 완료 (길드 전용)")
 
-@client.event
+@bot.event
 async def on_ready():
-    print(f"Logged in as {client.user}")
+    print(f"Logged in as {bot.user}")
 
 if __name__ == "__main__":
     init_db()
-    client.run(TOKEN)
+    bot.run(TOKEN)
