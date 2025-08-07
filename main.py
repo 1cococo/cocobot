@@ -166,11 +166,14 @@ async def on_message(message):
             try:
                 cur.execute(
                     """
-                    UPDATE records
+                   UPDATE records
                     SET image_url = %s
+                    WHERE id = (
+                    SELECT id FROM records
                     WHERE user_id = %s AND date = %s AND image_url IS NULL
                     ORDER BY id DESC
                     LIMIT 1
+)
                     """,
                     (message.attachments[0].url, message.author.id, date.today())
                 )
