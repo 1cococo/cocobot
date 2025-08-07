@@ -136,8 +136,22 @@ async def 주간기록(interaction: discord.Interaction):
         await interaction.response.send_message("이번 주에는 기록이 없습니다!", ephemeral=True)
         return
 
-    summary = "\n".join([f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})" for r in rows])
-    await interaction.response.send_message(f"📋 이번 주 기록 요약:\n{summary}", ephemeral=False)
+    # 메시지 나눠 보내기
+    chunks = []
+    current_chunk = "📋 이번 주 기록 요약:\n"
+    for r in rows:
+        line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})\n"
+        if len(current_chunk) + len(line) > 1900:  # 여유 100자
+            chunks.append(current_chunk)
+            current_chunk = ""
+        current_chunk += line
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    # 차례대로 전송
+    for i, chunk in enumerate(chunks):
+        await interaction.followup.send(chunk, ephemeral=False) if i > 0 else await interaction.response.send_message(chunk, ephemeral=False)
+
 
 # 커맨드: 코코 호출
 @bot.tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
