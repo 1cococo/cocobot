@@ -86,7 +86,7 @@ class RecordModal(discord.ui.Modal, title="기록 입력"):
         print(f"[DEBUG] 기록 저장됨: user={interaction.user.id}, category={self.category}, checklist={self.checklist.value}")
 
         try:
-            await interaction.response.send_message("기록이 저장되었습니다!", ephemeral=True)
+            await interaction.response.send_message("기록이 저장되었습니다! 아래에 사진을 한 장만 올려주세요!", ephemeral=True)
             print("[DEBUG] response 메시지 전송 성공")
         except Exception as e:
             print("[DEBUG] followup 메시지 전송 실패:", e)
