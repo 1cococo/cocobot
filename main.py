@@ -20,6 +20,26 @@ SONG_LIST = [
     "東京事変 - 修羅場", "Nirvana - Smells Like Teen Spirit", "Flight Facilities - Stranded"
 ]
 
+# 코코 디엠 모달
+class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보내기"):
+    message = discord.ui.TextInput(label="보낼 메세지", style=discord.TextStyle.paragraph)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            coco = await bot.fetch_user(COCO_USER_ID)
+            embed = discord.Embed(title="📩 새로운 익명 메세지", color=0xADD8E6)
+            embed.add_field(name="내용", value=self.message.value, inline=False)
+            embed.set_footer(text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+            await coco.send(embed=embed)
+            await interaction.response.send_message("✅ 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
+            print(f"[DEBUG] 익명 메세지 전송 완료: to COCO_USER_ID={COCO_USER_ID}")
+
+        except Exception as e:
+            print(f"[ERROR] 코코 디엠 전송 실패: {e}")
+            await interaction.response.send_message("❌ 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
+
+
 # DB 연결 함수
 def get_db_connection():
     return psycopg2.connect(DB_URL)
@@ -156,6 +176,11 @@ async def 주간기록(interaction: discord.Interaction):
     # 차례대로 전송
     for i, chunk in enumerate(chunks):
         await interaction.followup.send(chunk, ephemeral=False) if i > 0 else await interaction.response.send_message(chunk, ephemeral=False)
+
+# 커맨드 ; 코코 디엠
+@bot.tree.command(name="디엠", description="코코에게 익명 메세지를 보냅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 디엠(interaction: discord.Interaction):
+    await interaction.response.send_modal(AnonToCocoModal())
 
 
 # 커맨드: 코코 호출
