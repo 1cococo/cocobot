@@ -136,17 +136,22 @@ async def 주간기록(interaction: discord.Interaction):
         await interaction.response.send_message("이번 주에는 기록이 없습니다!", ephemeral=True)
         return
 
-    # 메시지 나눠 보내기
+        # 메시지 나눠 보내기
     chunks = []
     current_chunk = "📋 이번 주 기록 요약:\n"
     for r in rows:
-        line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})\n"
-        if len(current_chunk) + len(line) > 1900:  # 여유 100자
+        line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})"
+        if r[2]:  # image_url
+            line += f"\n📷 이미지: {r[2]}"
+        line += "\n"
+
+        if len(current_chunk) + len(line) > 1900:
             chunks.append(current_chunk)
             current_chunk = ""
         current_chunk += line
     if current_chunk:
         chunks.append(current_chunk)
+
 
     # 차례대로 전송
     for i, chunk in enumerate(chunks):
