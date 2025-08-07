@@ -60,6 +60,7 @@ def init_db():
             category TEXT NOT NULL,
             checklist TEXT,
             image_url TEXT,
+            date DATE NOT NULL,
             created_at TIMESTAMP DEFAULT NOW()
         )
     """)
@@ -68,36 +69,24 @@ def init_db():
     conn.close()
 
 # 스레드 찾기
+def match_user_thread(threads, user):
+    for t in threads:
+        if str(user.id) in t.name:
+            return t
+    return None
+
 async def get_user_thread(user, guild):
     for channel_id in RECORD_CHANNEL_IDS:
-        try:
-            forum_channel = await bot.fetch_channel(channel_id)
-        except Exception as e:
-            print(f"[DEBUG] 채널 불러오기 실패: {e}")
+        forum_channel = guild.get_channel(channel_id)
+        if not forum_channel:
             continue
-
-        if not isinstance(forum_channel, discord.ForumChannel):
-            continue
-
-        # 현재 스레드들
         try:
-            for thread in forum_channel.threads:
-                if str(user.id) in thread.name:
-                    print(f"[DEBUG] 스레드 찾음 (활성): {thread.name}")
-                    return thread
+            threads = forum_channel.threads
+            thread = match_user_thread(threads, user)
+            if thread:
+                return thread
         except Exception as e:
-            print(f"[DEBUG] 활성 스레드 탐색 실패: {e}")
-
-        # 아카이브 스레드들
-        try:
-            async for archived in forum_channel.archived_threads(limit=50):
-                if str(user.id) in archived.name:
-                    print(f"[DEBUG] 스레드 찾음 (아카이브): {archived.name}")
-                    return archived
-        except Exception as e:
-            print(f"[DEBUG] 아카이브 스레드 탐색 실패: {e}")
-
-    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}")
+            print(f"[DEBUG] 스레드 탐색 실패: {e}")
     return None
 
 # 기록 저장 모달
@@ -112,8 +101,8 @@ class RecordModal(discord.ui.Modal, title="기록 작성"):
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO records (user_id, category, checklist) VALUES (%s, %s, %s)",
-            (interaction.user.id, self.category, self.checklist.value)
+            "INSERT INTO records (user_id, category, checklist, image_url, date) VALUES (%s, %s, %s, %s, %s)",
+            (interaction.user.id, self.category, self.checklist.value, None, datetime.now().date())
         )
         conn.commit()
         cur.close()
@@ -134,6 +123,8 @@ class RecordModal(discord.ui.Modal, title="기록 작성"):
                 print(f"[DEBUG] 오늘 기록 메시지 전송 성공: user={interaction.user.id}")
             except Exception as e:
                 print(f"[DEBUG] 오늘 기록 메시지 전송 실패: {e}")
+        else:
+            print(f"[DEBUG] 스레드 없음: user={interaction.user.id}, name={interaction.user.display_name}")
 
 # slash command - 기록
 @bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
@@ -156,11 +147,11 @@ async def 주간기록(interaction: discord.Interaction):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT category, checklist, image_url, created_at
+        SELECT category, checklist, image_url, date
         FROM records
-        WHERE user_id = %s AND created_at >= %s
-        ORDER BY created_at ASC
-    """, (interaction.user.id, datetime.now() - timedelta(days=7)))
+        WHERE user_id = %s AND date >= %s
+        ORDER BY date ASC
+    """, (interaction.user.id, datetime.now().date() - timedelta(days=7)))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -192,13 +183,13 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if isinstance(message.channel, discord.Thread):  # 수정됨
+    if message.channel.type == discord.ChannelType.public_thread:
         if message.attachments:
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute(
-                "UPDATE records SET image_url = %s WHERE user_id = %s ORDER BY id DESC LIMIT 1",
-                (str(message.attachments[0].url), message.author.id)
+                "UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s ORDER BY id DESC LIMIT 1",
+                (str(message.attachments[0].url), message.author.id, datetime.now().date())
             )
             conn.commit()
             rowcount = cur.rowcount
@@ -220,7 +211,8 @@ async def setup_hook():
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
         await bot.tree.sync(guild=guild)
-    print("명령어 동기화 완료 (길드 전용)")
+        print(f"명령어 동기화 완료 (길드 전용 {guild_id})")
+    print("커맨드 등록 완료")
 
 @bot.event
 async def on_ready():
