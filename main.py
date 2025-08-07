@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import random
 
 # 환경 변수
@@ -16,24 +16,16 @@ COCO_USER_ID = int(os.getenv("COCO_USER_ID", 0))
 
 SONG_LIST = [
     "실리카겔 - APEX", "Hoshino Gen - Fushigi", "넥스트 - 도시인", "윤상 - 달리기", "DAY6 - Healer",
-    "Young K - Let it be summer", "김승주 - 케이크가 불쌍해", "원필 - 행운을 빌어줘", "Shibata Jun - 救世主(구세주)",
-    "H.O.T - 오늘도 짜증나는 날이네", "Porter Robinson - Shelter", "King gnu - 白日(백일)", "Jazztronik - Samurai",
-    "The Delfonics - La-La Means I Love You", "Do As Infinity - Oasis", "東京事変 - 修羅場",
-    "Nirvana - Smells Like Teen Spirit", "Blood Orange - Time Will Tell", "QURULI - 東京",
-    "Flight Facilities - Stranded"
+    "Young K - Let it be summer", "김승주 - 케이크가 불쌍해", "원필 - 행운을 빌어줘",
+    "Shibata Jun - 救世主(구세주)", "H.O.T - 오늘도 짜증나는 날이네", "Porter Robinson - Shelter",
+    "King gnu - 白日(백일)", "Jazztronik - Samurai", "The Delfonics - La-La Means I Love You",
+    "Do As Infinity - Oasis", "東京事変 - 修羅場", "Nirvana - Smells Like Teen Spirit",
+    "Blood Orange - Time Will Tell", "QURULI - 東京", "Flight Facilities - Stranded"
 ]
 
 # DB 연결
 def get_db_connection():
     return psycopg2.connect(DB_URL)
-
-# 디스코드 클라이언트
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 # DB 초기화
 def init_db():
@@ -43,43 +35,40 @@ def init_db():
         CREATE TABLE IF NOT EXISTS records (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL,
+            date DATE NOT NULL DEFAULT CURRENT_DATE,
             category TEXT NOT NULL,
             checklist TEXT,
             image_url TEXT,
-            date DATE NOT NULL DEFAULT CURRENT_DATE
+            created_at TIMESTAMP DEFAULT NOW()
         )
     """)
     conn.commit()
     cur.close()
     conn.close()
 
-# 스레드 찾기
-def match_user_thread(threads, user):
-    for t in threads:
-        if str(user.id) in t.name:
-            return t
-    return None
+# 디스코드 클라이언트
+intents = discord.Intents.default()
+intents.messages = True
+intents.message_content = True
+intents.guilds = True
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
+# 스레드 찾기
 async def get_user_thread(user, guild):
     for channel_id in RECORD_CHANNEL_IDS:
         forum_channel = guild.get_channel(channel_id)
         if not forum_channel:
-            print(f"[DEBUG] forum_channel is None for channel_id={channel_id}")
             continue
-        if not isinstance(forum_channel, discord.ForumChannel):
-            print(f"[DEBUG] forum_channel is not ForumChannel: {forum_channel} (type: {type(forum_channel)})")
-            continue
-
         try:
-            threads = forum_channel.threads
-            for t in threads:
-                if str(user.id) in t.name:
-                    print(f"[DEBUG] 스레드 찾음: {t.name}")
-                    return t
+            for thread in forum_channel.threads:
+                if str(user.id) in thread.name:
+                    return thread
+            async for thread in forum_channel.archived_threads(limit=50):
+                if str(user.id) in thread.name:
+                    return thread
         except Exception as e:
             print(f"[DEBUG] 스레드 탐색 실패: {e}")
-
-    print(f"[DEBUG] 스레드 없음: user={user.id}, name={user.display_name}")
     return None
 
 # 기록 저장 모달
@@ -91,11 +80,12 @@ class RecordModal(discord.ui.Modal, title="기록 작성"):
         self.category = category
 
     async def on_submit(self, interaction: discord.Interaction):
+        today = date.today()
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO records (user_id, category, checklist) VALUES (%s, %s, %s)",
-            (interaction.user.id, self.category, self.checklist.value)
+            "INSERT INTO records (user_id, date, category, checklist) VALUES (%s, %s, %s, %s)",
+            (interaction.user.id, today, self.category, self.checklist.value)
         )
         conn.commit()
         cur.close()
@@ -117,11 +107,11 @@ class RecordModal(discord.ui.Modal, title="기록 작성"):
             except Exception as e:
                 print(f"[DEBUG] 오늘 기록 메시지 전송 실패: {e}")
         else:
-            print(f"[DEBUG] 스레드 없음: user={interaction.user.id}, name={interaction.user.display_name}")
             try:
                 await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
-            except:
-                pass
+                print(f"[DEBUG] followup 에러 메시지 전송 완료")
+            except Exception as e:
+                print(f"[DEBUG] followup 전송 실패: {e}")
 
 # slash command - 기록
 @bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
@@ -130,8 +120,8 @@ async def 기록(interaction: discord.Interaction):
     for category in ["운동", "식단", "단식"]:
         button = discord.ui.Button(label=category, style=discord.ButtonStyle.primary)
 
-        async def callback(interaction, category=category):
-            await interaction.response.send_modal(RecordModal(category))
+        async def callback(inter, cat=category):
+            await inter.response.send_modal(RecordModal(cat))
 
         button.callback = callback
         view.add_item(button)
@@ -148,7 +138,7 @@ async def 주간기록(interaction: discord.Interaction):
         FROM records
         WHERE user_id = %s AND date >= %s
         ORDER BY date ASC
-    """, (interaction.user.id, datetime.now().date() - timedelta(days=7)))
+    """, (interaction.user.id, date.today() - timedelta(days=7)))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -158,7 +148,7 @@ async def 주간기록(interaction: discord.Interaction):
         return
 
     summary = "\n".join([f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})" for r in rows])
-    await interaction.response.send_message(f"이번 주 기록 요약:\n{summary}", ephemeral=False)
+    await interaction.response.send_message(f"📋 이번 주 기록 요약:\n{summary}", ephemeral=False)
 
 # slash command - coco 호출
 @bot.tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
@@ -172,7 +162,7 @@ async def coco(interaction: discord.Interaction):
 @bot.tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 추천음악(interaction: discord.Interaction):
     song = random.choice(SONG_LIST)
-    await interaction.response.send_message(f"오늘의 추천 음악은: **{song}**", ephemeral=False)
+    await interaction.response.send_message(f"🎵 오늘의 추천 음악: **{song}**", ephemeral=False)
 
 # 메시지 이벤트 - 사진 저장
 @bot.event
@@ -184,9 +174,15 @@ async def on_message(message):
         if message.attachments:
             conn = get_db_connection()
             cur = conn.cursor()
+            today = date.today()
             cur.execute(
-                "UPDATE records SET image_url = %s WHERE user_id = %s AND date = %s AND image_url IS NULL ORDER BY id DESC LIMIT 1",
-                (str(message.attachments[0].url), message.author.id, datetime.now().date())
+                """
+                UPDATE records
+                SET image_url = %s
+                WHERE user_id = %s AND date = %s AND image_url IS NULL
+                ORDER BY id DESC LIMIT 1
+                """,
+                (str(message.attachments[0].url), message.author.id, today)
             )
             conn.commit()
             rowcount = cur.rowcount
