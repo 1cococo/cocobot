@@ -2,184 +2,209 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ui import Modal, TextInput, View, Button
 import psycopg2
-import datetime
+from datetime import datetime, timedelta, date
 import random
 
-# 환경 변수 로딩
+# 환경 변수
 TOKEN = os.getenv("DISCORD_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
-GUILD_IDS = [int(gid) for gid in os.getenv("GUILD_IDS", "").split(",") if gid]
-RECORD_CHANNEL_IDS = [int(cid) for cid in os.getenv("RECORD_CHANNEL_IDS", "").split(",") if cid]
+GUILD_IDS = [int(g) for g in os.getenv("GUILD_ID", "").split(",")]
+RECORD_CHANNEL_IDS = [int(c) for c in os.getenv("RECORD_CHANNEL_ID", "").split(",")]
+DB_URL = os.getenv("DATABASE_URL")
 COCO_USER_ID = int(os.getenv("COCO_USER_ID", 0))
 
-# DB 연결 함수
-def get_db():
-    return psycopg2.connect(DATABASE_URL)
-
-# 추천 음악 리스트
 SONG_LIST = [
-    "실리카겔 - APEX", "넥스트 - 도시인", "DAY6 - Healer", "윤상 - 달리기", "김승주 - 케이크가 불쌍해",
-    "Shibata Jun - 救世主(구세주)", "Porter Robinson - Shelter", "Do As Infinity - Oasis",
-    "Jazztronik - Samurai", "King gnu - 白日", "LUCKY TAPES - Gravity"
+    "실리카겔 - APEX", "넥스트 - 도시인", "윤상 - 달리기", "DAY6 - Healer", "Young K - Let it be summer",
+    "김승주 - 케이크가 불쌍해", "원필 - 행운을 빌어줘", "Shibata Jun - 救世主", "H.O.T - 오늘도 짜증나는 날이네",
+    "Porter Robinson - Shelter", "King gnu - 白日", "Jazztronik - Samurai", "Do As Infinity - Oasis",
+    "東京事変 - 修羅場", "Nirvana - Smells Like Teen Spirit", "Flight Facilities - Stranded"
 ]
+
+# DB 연결 함수
+def get_db_connection():
+    return psycopg2.connect(DB_URL)
+
+# DB 초기화
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS records (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            date DATE NOT NULL,
+            category TEXT NOT NULL,
+            checklist TEXT,
+            image_url TEXT
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 # 디스코드 봇 설정
 intents = discord.Intents.default()
+intents.messages = True
 intents.message_content = True
 intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 스레드 찾기 함수
-async def get_user_thread(user: discord.User | discord.Member):
-    for cid in RECORD_CHANNEL_IDS:
-        forum_channel = bot.get_channel(cid)
-        if not isinstance(forum_channel, discord.ForumChannel):
+# 스레드 찾기
+async def get_user_thread(user, guild):
+    for channel_id in RECORD_CHANNEL_IDS:
+        forum_channel = guild.get_channel(channel_id)
+        if not forum_channel:
             continue
-
-        # 기존 스레드 탐색
-        for thread in forum_channel.threads:
-            if str(user.id) in thread.name:
-                return thread
-
-        # 아카이브된 스레드 탐색
         try:
-            async for archived in forum_channel.archived_threads(limit=50):
-                if str(user.id) in archived.name:
-                    return archived
+            for thread in forum_channel.threads:
+                if str(user.id) in thread.name:
+                    return thread
         except Exception as e:
-            print(f"[DEBUG] 아카이브 탐색 실패: {e}")
+            print(f"[DEBUG] 스레드 탐색 실패: {e}")
     return None
 
-# 기록 입력 모달
-class RecordModal(Modal, title="기록 입력"):
-    checklist = TextInput(label="오늘 기록을 입력해주세요!", style=discord.TextStyle.paragraph)
+# 기록 모달
+class RecordModal(discord.ui.Modal, title="기록 입력"):
+    checklist = discord.ui.TextInput(label="오늘의 기록", style=discord.TextStyle.paragraph)
 
-    def __init__(self, category: str, user_id: int):
+    def __init__(self, category):
         super().__init__()
         self.category = category
-        self.user_id = user_id
 
     async def on_submit(self, interaction: discord.Interaction):
-        today = datetime.date.today()
-        conn = get_db()
+        today = date.today()
+        conn = get_db_connection()
         cur = conn.cursor()
-        try:
-            cur.execute("""
-                INSERT INTO records (user_id, date, category, checklist, image_url)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (self.user_id, today, self.category, self.checklist.value, None))
-            conn.commit()
-            print(f"[DEBUG] 기록 저장됨: user={self.user_id}, category={self.category}, checklist={self.checklist.value}")
-        except Exception as e:
-            print("[DEBUG] 기록 저장 실패:", e)
-        finally:
-            cur.close()
-            conn.close()
+        cur.execute(
+            "INSERT INTO records (user_id, date, category, checklist) VALUES (%s, %s, %s, %s)",
+            (interaction.user.id, today, self.category, self.checklist.value)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DEBUG] 기록 저장됨: user={interaction.user.id}, category={self.category}, checklist={self.checklist.value}")
 
         try:
-            await interaction.response.send_message("기록이 저장되었습니다! 하단에 사진 한 장만 올려주세요!", ephemeral=True)
+            await interaction.response.send_message("기록이 저장되었습니다!", ephemeral=True)
             print("[DEBUG] response 메시지 전송 성공")
-        except:
-            await interaction.followup.send("기록이 저장되었습니다!", ephemeral=True)
-            print("[DEBUG] followup 메시지 전송 성공")
+        except Exception as e:
+            print("[DEBUG] followup 메시지 전송 실패:", e)
 
-        thread = await get_user_thread(interaction.user)
+        thread = await get_user_thread(interaction.user, interaction.guild)
         if thread:
             try:
                 await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}")
+                print(f"[DEBUG] 오늘 기록 메시지 전송 성공: user={interaction.user.id}")
             except Exception as e:
-                print("[DEBUG] 스레드 메시지 전송 실패:", e)
+                print(f"[DEBUG] 오늘 기록 메시지 전송 실패: {e}")
         else:
             await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
 
-# 기록 선택 버튼 뷰
-class RecordView(View):
-    def __init__(self, user_id: int):
-        super().__init__(timeout=None)
-        self.user_id = user_id
+# 커맨드: 기록
+@bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 기록(interaction: discord.Interaction):
+    view = discord.ui.View()
+    for category in ["운동", "식단", "단식"]:
+        button = discord.ui.Button(label=category, style=discord.ButtonStyle.primary)
 
-    @discord.ui.button(label="운동", style=discord.ButtonStyle.green)
-    async def exercise(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(RecordModal("운동", self.user_id))
+        async def callback(i, category=category):
+            await i.response.send_modal(RecordModal(category))
 
-    @discord.ui.button(label="식단", style=discord.ButtonStyle.blurple)
-    async def diet(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(RecordModal("식단", self.user_id))
+        button.callback = callback
+        view.add_item(button)
 
-    @discord.ui.button(label="단식", style=discord.ButtonStyle.red)
-    async def fast(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(RecordModal("단식", self.user_id))
+    await interaction.response.send_message("오늘의 기록을 선택하세요!", view=view, ephemeral=True)
 
-# 사진 저장 처리
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
+# 커맨드: 주간 기록
+@bot.tree.command(name="주간기록", description="이번 주 기록 요약", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 주간기록(interaction: discord.Interaction):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    start_date = date.today() - timedelta(days=7)
+    cur.execute("""
+        SELECT category, checklist, image_url, date
+        FROM records
+        WHERE user_id = %s AND date >= %s
+        ORDER BY date ASC
+    """, (interaction.user.id, start_date))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    if not rows:
+        await interaction.response.send_message("이번 주에는 기록이 없습니다!", ephemeral=True)
         return
 
-    if isinstance(message.channel, discord.Thread) and message.channel.parent_id in RECORD_CHANNEL_IDS:
-        if message.attachments:
-            conn = get_db()
-            cur = conn.cursor()
-            saved = False
-            try:
-                cur.execute("""
-                    UPDATE records
-                    SET image_url = %s
-                    WHERE user_id = %s AND date = %s AND image_url IS NULL
-                    ORDER BY id DESC
-                    LIMIT 1
-                """, (message.attachments[0].url, message.author.id, datetime.date.today()))
-                conn.commit()
-                if cur.rowcount > 0:
-                    saved = True
-                    print(f"[DEBUG] 이미지 저장 성공: user={message.author.id}")
-                else:
-                    print(f"[DEBUG] 업데이트할 기록 없음: user={message.author.id}")
-            except Exception as e:
-                print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
-            finally:
-                cur.close()
-                conn.close()
+    summary = "\n".join([f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})" for r in rows])
+    await interaction.response.send_message(f"📋 이번 주 기록 요약:\n{summary}", ephemeral=False)
 
-            if saved:
-                try:
-                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
-                except:
-                    print("[DEBUG] 사진 안내 메시지 전송 실패")
-
-# 슬래시 커맨드 등록
-@bot.tree.command(name="기록", description="오늘의 기록을 입력합니다", guilds=[discord.Object(id=gid) for gid in GUILD_IDS])
-async def 기록(interaction: discord.Interaction):
-    await interaction.response.send_message("카테고리를 선택해주세요!", view=RecordView(interaction.user.id), ephemeral=True)
-
-@bot.tree.command(name="추천음악", description="랜덤 음악을 추천합니다", guilds=[discord.Object(id=gid) for gid in GUILD_IDS])
-async def 추천음악(interaction: discord.Interaction):
-    song = random.choice(SONG_LIST)
-    await interaction.response.send_message(f"🎵 오늘의 추천 음악:\n{song}")
-
-@bot.tree.command(name="coco", description="코코를 불러요!", guilds=[discord.Object(id=gid) for gid in GUILD_IDS])
+# 커맨드: 코코 호출
+@bot.tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def coco(interaction: discord.Interaction):
     if COCO_USER_ID:
         await interaction.response.send_message(f"<@{COCO_USER_ID}>", ephemeral=False)
     else:
         await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
 
-# on_ready 이벤트
+# 커맨드: 추천 음악
+@bot.tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 추천음악(interaction: discord.Interaction):
+    song = random.choice(SONG_LIST)
+    await interaction.response.send_message(f"오늘의 추천 음악은: **{song}**", ephemeral=False)
+
+# 사진 저장 감지
 @bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.channel.type == discord.ChannelType.public_thread:
+        if message.attachments:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                   UPDATE records
+                    SET image_url = %s
+                    WHERE id = (
+                    SELECT id FROM records
+                    WHERE user_id = %s AND date = %s AND image_url IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+)
+                    """,
+                    (message.attachments[0].url, message.author.id, date.today())
+                )
+                conn.commit()
+                rowcount = cur.rowcount
+                if rowcount > 0:
+                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
+                    print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
+                else:
+                    print(f"[DEBUG] DB 업데이트 실패: rowcount=0")
+            except Exception as e:
+                print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
+            finally:
+                cur.close()
+                conn.close()
+    await bot.process_commands(message)
 
 # 명령어 동기화
 @bot.event
 async def setup_hook():
-    for gid in GUILD_IDS:
-        guild = discord.Object(id=gid)
+    for guild_id in GUILD_IDS:
+        guild = discord.Object(id=guild_id)
         await bot.tree.sync(guild=guild)
-        print(f"명령어 동기화 완료 (길드 전용 {gid})")
+    print("명령어 동기화 완료 (길드 전용)")
+
+# 봇 준비 완료
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
 
 # 실행
 if __name__ == "__main__":
+    init_db()
     bot.run(TOKEN)
