@@ -4,7 +4,9 @@ from discord import app_commands
 from discord.ext import commands
 import psycopg2
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 import random
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # 환경 변수
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -20,6 +22,17 @@ SONG_LIST = [
     "東京事変 - 修羅場", "Nirvana - Smells Like Teen Spirit", "Flight Facilities - Stranded"
 ]
 
+# 디스코드 봇 설정
+intents = discord.Intents.default()
+intents.messages = True
+intents.message_content = True
+intents.guilds = True
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+scheduler = AsyncIOScheduler()
+
+
 # 코코 디엠 모달
 class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보내기"):
     message = discord.ui.TextInput(label="보낼 메세지", style=discord.TextStyle.paragraph)
@@ -27,17 +40,17 @@ class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보
     async def on_submit(self, interaction: discord.Interaction):
         try:
             coco = await bot.fetch_user(COCO_USER_ID)
-            embed = discord.Embed(title="📩 새로운 익명 메세지", color=0xADD8E6)
+            embed = discord.Embed(title="\ud83d\udce9 새로운 익명 메세지", color=0xADD8E6)
             embed.add_field(name="내용", value=self.message.value, inline=False)
-            embed.set_footer(text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            embed.set_footer(text=f"시간: {datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')}")
 
             await coco.send(embed=embed)
-            await interaction.response.send_message("✅ 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
+            await interaction.response.send_message("\u2705 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
             print(f"[DEBUG] 익명 메세지 전송 완료: to COCO_USER_ID={COCO_USER_ID}")
 
         except Exception as e:
             print(f"[ERROR] 코코 디엠 전송 실패: {e}")
-            await interaction.response.send_message("❌ 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
+            await interaction.response.send_message("\u274c 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
 
 
 # DB 연결 함수
@@ -70,6 +83,93 @@ intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
+
+# 주간기록 자동 전송 + 코코양 디엠 백업
+async def send_weekly_summaries():
+    print("[SCHEDULER] 주간 기록 자동 전송 시작")
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    start_date = today - timedelta(days=today.weekday())  # 이번 주 월요일부터
+
+    coco = await bot.fetch_user(COCO_USER_ID)
+    backup_summary = ""
+
+    for guild in bot.guilds:
+        for member in guild.members:
+            if member.bot:
+                continue
+
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT category, checklist, image_url, date
+                FROM records
+                WHERE user_id = %s AND date >= %s
+                ORDER BY date ASC
+            """, (member.id, start_date))
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            if not rows:
+                continue
+
+            summary = f"📋 @{member.name} 님의 주간 기록 요약:\n"
+            for r in rows:
+                line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})"
+                if r[2]:
+                    line += f"\n📷 이미지: {r[2]}"
+                line += "\n"
+                summary += line
+
+            backup_summary += summary + "\n-----------------------------\n"
+
+            thread = await get_user_thread(member, guild)
+            if thread:
+                try:
+                    await thread.send(f"{member.mention}님의 주간 기록 요약이에요!\n\n{summary}")
+                    print(f"[SCHEDULER] 주간기록 전송 완료: {member.id}")
+                except Exception as e:
+                    print(f"[SCHEDULER] 주간기록 전송 실패: {e}")
+
+    if backup_summary:
+        try:
+            await coco.send("📦 이번 주 전체 유저 주간기록 백업입니다:\n\n" + backup_summary)
+            print("[SCHEDULER] 코코 디엠 백업 전송 완료")
+        except Exception as e:
+            print(f"[SCHEDULER] 코코 디엠 전송 실패: {e}")
+
+# 스레드 찾기
+async def get_user_thread(user, guild):
+    for channel_id in RECORD_CHANNEL_IDS:
+        forum_channel = guild.get_channel(channel_id)
+        if not forum_channel:
+            continue
+        try:
+            for thread in forum_channel.threads:
+                if str(user.id) in thread.name:
+                    return thread
+        except Exception as e:
+            print(f"[DEBUG] 스레드 탐색 실패: {e}")
+    return None
+
+# 봇 시작 시 스케줄러 등록
+@bot.event
+async def on_ready():
+    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="sun", hour=16, minute=20, timezone="Asia/Seoul")
+    scheduler.start()
+    print(f"Logged in as {bot.user}")
+
+
+# 명령어 동기화
+@bot.event
+async def setup_hook():
+    for guild_id in GUILD_IDS:
+        guild = discord.Object(id=guild_id)
+        await bot.tree.sync(guild=guild)
+    print("명령어 동기화 완료 (길드 전용)")
+
+
 # 스레드 찾기
 async def get_user_thread(user, guild):
     for channel_id in RECORD_CHANNEL_IDS:
@@ -93,7 +193,7 @@ class RecordModal(discord.ui.Modal, title="기록 입력"):
         self.category = category
 
     async def on_submit(self, interaction: discord.Interaction):
-        today = date.today()
+        today = datetime.now(ZoneInfo("Asia/Seoul")).date()
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
@@ -119,7 +219,8 @@ class RecordModal(discord.ui.Modal, title="기록 입력"):
             except Exception as e:
                 print(f"[DEBUG] 오늘 기록 메시지 전송 실패: {e}")
         else:
-            await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
+            await interaction.followup.send("\u26a0\ufe0f 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
+
 
 # 커맨드: 기록
 @bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
