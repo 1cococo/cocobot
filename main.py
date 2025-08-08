@@ -1,7 +1,8 @@
 import os
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks  # ✅ tasks를 여기로!
+from discord.ext import commands, tasks
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # ✅ 추가된 부분!
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
@@ -31,32 +32,26 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler()
 
 
-# 코코 디엠 모달
 class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보내기"):
     message = discord.ui.TextInput(label="보낼 메세지", style=discord.TextStyle.paragraph)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             coco = await bot.fetch_user(COCO_USER_ID)
-            embed = discord.Embed(title="\ud83d\udce9 새로운 익명 메세지", color=0xADD8E6)
+            embed = discord.Embed(title="📩 새로운 익명 메세지", color=0xADD8E6)
             embed.add_field(name="내용", value=self.message.value, inline=False)
             embed.set_footer(text=f"시간: {datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')}")
 
             await coco.send(embed=embed)
-            await interaction.response.send_message("\u2705 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
-            print(f"[DEBUG] 익명 메세지 전송 완료: to COCO_USER_ID={COCO_USER_ID}")
-
+            await interaction.response.send_message("✅ 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
         except Exception as e:
             print(f"[ERROR] 코코 디엠 전송 실패: {e}")
-            await interaction.response.send_message("\u274c 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
+            await interaction.response.send_message("❌ 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
 
 
-# DB 연결 함수
 def get_db_connection():
     return psycopg2.connect(DB_URL)
 
-
-# DB 초기화
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -74,17 +69,7 @@ def init_db():
     cur.close()
     conn.close()
 
-# 디스코드 봇 설정
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
-
-
-# 주간기록 자동 전송 + 코코양 디엠 백업
 @tasks.loop(minutes=1)
 async def scheduled_task():
     await send_weekly_summaries()
@@ -92,7 +77,7 @@ async def scheduled_task():
 async def send_weekly_summaries():
     print("[SCHEDULER] 주간 기록 자동 전송 시작")
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    start_date = today - timedelta(days=today.weekday())  # 이번 주 월요일부터
+    start_date = today - timedelta(days=today.weekday())
 
     coco = await bot.fetch_user(COCO_USER_ID)
     backup_summary = ""
@@ -131,18 +116,15 @@ async def send_weekly_summaries():
             if thread:
                 try:
                     await thread.send(f"{member.mention}님의 주간 기록 요약이에요!\n\n{summary}")
-                    print(f"[SCHEDULER] 주간기록 전송 완료: {member.id}")
                 except Exception as e:
                     print(f"[SCHEDULER] 주간기록 전송 실패: {e}")
 
     if backup_summary:
         try:
             await coco.send("📦 이번 주 전체 유저 주간기록 백업입니다:\n\n" + backup_summary)
-            print("[SCHEDULER] 코코 디엠 백업 전송 완료")
         except Exception as e:
             print(f"[SCHEDULER] 코코 디엠 전송 실패: {e}")
 
-# 스레드 찾기
 async def get_user_thread(user, guild):
     for channel_id in RECORD_CHANNEL_IDS:
         forum_channel = guild.get_channel(channel_id)
@@ -156,7 +138,6 @@ async def get_user_thread(user, guild):
             print(f"[DEBUG] 스레드 탐색 실패: {e}")
     return None
 
-# 봇 시작 시 봇 정보 출력 및 루프 시작
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -164,31 +145,13 @@ async def on_ready():
         scheduled_task.start()
         print("✅ 디스코드 tasks.loop로 주간기록 스케줄 시작됨")
 
-# 명령어 동기화
 @bot.event
 async def setup_hook():
-    print("[DEBUG] setup_hook 실행됨")
+    for guild_id in GUILD_IDS:
+        guild = discord.Object(id=guild_id)
+        await bot.tree.sync(guild=guild)
     print("명령어 동기화 완료 (길드 전용)")
 
-
-
-
-
-# 스레드 찾기
-async def get_user_thread(user, guild):
-    for channel_id in RECORD_CHANNEL_IDS:
-        forum_channel = guild.get_channel(channel_id)
-        if not forum_channel:
-            continue
-        try:
-            for thread in forum_channel.threads:
-                if str(user.id) in thread.name:
-                    return thread
-        except Exception as e:
-            print(f"[DEBUG] 스레드 탐색 실패: {e}")
-    return None
-
-# 기록 모달
 class RecordModal(discord.ui.Modal, title="기록 입력"):
     checklist = discord.ui.TextInput(label="오늘의 기록", style=discord.TextStyle.paragraph)
 
@@ -207,11 +170,9 @@ class RecordModal(discord.ui.Modal, title="기록 입력"):
         conn.commit()
         cur.close()
         conn.close()
-        print(f"[DEBUG] 기록 저장됨: user={interaction.user.id}, category={self.category}, checklist={self.checklist.value}")
 
         try:
             await interaction.response.send_message("기록이 저장되었습니다! 아래에 사진을 한 장만 올려주세요!", ephemeral=True)
-            print("[DEBUG] response 메시지 전송 성공")
         except Exception as e:
             print("[DEBUG] followup 메시지 전송 실패:", e)
 
@@ -219,14 +180,11 @@ class RecordModal(discord.ui.Modal, title="기록 입력"):
         if thread:
             try:
                 await thread.send(f"{interaction.user.mention}님의 오늘 기록 : [{self.category}] {self.checklist.value}")
-                print(f"[DEBUG] 오늘 기록 메시지 전송 성공: user={interaction.user.id}")
             except Exception as e:
                 print(f"[DEBUG] 오늘 기록 메시지 전송 실패: {e}")
         else:
-            await interaction.followup.send("\u26a0\ufe0f 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
+            await interaction.followup.send("⚠️ 해당 유저의 포럼 스레드를 찾을 수 없습니다. 운영자에게 문의하세요.", ephemeral=True)
 
-
-# 커맨드: 기록
 @bot.tree.command(name="기록", description="오늘의 기록을 남깁니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 기록(interaction: discord.Interaction):
     view = discord.ui.View()
@@ -241,7 +199,6 @@ async def 기록(interaction: discord.Interaction):
 
     await interaction.response.send_message("오늘의 기록을 선택하세요!", view=view, ephemeral=True)
 
-# 커맨드: 주간 기록
 @bot.tree.command(name="주간기록", description="이번 주 기록 요약", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 주간기록(interaction: discord.Interaction):
     conn = get_db_connection()
@@ -261,15 +218,13 @@ async def 주간기록(interaction: discord.Interaction):
         await interaction.response.send_message("이번 주에는 기록이 없습니다!", ephemeral=True)
         return
 
-        # 메시지 나눠 보내기
     chunks = []
     current_chunk = "📋 이번 주 기록 요약:\n"
     for r in rows:
         line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})"
-        if r[2]:  # image_url
+        if r[2]:
             line += f"\n📷 이미지: {r[2]}"
         line += "\n"
-
         if len(current_chunk) + len(line) > 1900:
             chunks.append(current_chunk)
             current_chunk = ""
@@ -277,18 +232,13 @@ async def 주간기록(interaction: discord.Interaction):
     if current_chunk:
         chunks.append(current_chunk)
 
-
-    # 차례대로 전송
     for i, chunk in enumerate(chunks):
         await interaction.followup.send(chunk, ephemeral=False) if i > 0 else await interaction.response.send_message(chunk, ephemeral=False)
 
-# 커맨드 ; 코코 디엠
 @bot.tree.command(name="디엠", description="코코에게 익명 메세지를 보냅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 디엠(interaction: discord.Interaction):
     await interaction.response.send_modal(AnonToCocoModal())
 
-
-# 커맨드: 코코 호출
 @bot.tree.command(name="coco", description="코코를 불러봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def coco(interaction: discord.Interaction):
     if COCO_USER_ID:
@@ -296,13 +246,11 @@ async def coco(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("COCO_USER_ID가 설정되지 않았습니다.", ephemeral=True)
 
-# 커맨드: 추천 음악
 @bot.tree.command(name="추천음악", description="랜덤 추천 음악을 받아봅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 추천음악(interaction: discord.Interaction):
     song = random.choice(SONG_LIST)
     await interaction.response.send_message(f"오늘의 추천 음악은: **{song}**", ephemeral=False)
 
-# 사진 저장 감지
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -315,24 +263,20 @@ async def on_message(message):
             try:
                 cur.execute(
                     """
-                   UPDATE records
+                    UPDATE records
                     SET image_url = %s
                     WHERE id = (
-                    SELECT id FROM records
-                    WHERE user_id = %s AND date = %s AND image_url IS NULL
-                    ORDER BY id DESC
-                    LIMIT 1
-)
+                        SELECT id FROM records
+                        WHERE user_id = %s AND date = %s AND image_url IS NULL
+                        ORDER BY id DESC
+                        LIMIT 1
+                    )
                     """,
                     (message.attachments[0].url, message.author.id, date.today())
                 )
                 conn.commit()
-                rowcount = cur.rowcount
-                if rowcount > 0:
+                if cur.rowcount > 0:
                     await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
-                    print(f"[DEBUG] 사진 안내 메시지 전송 성공: user={message.author.id}")
-                else:
-                    print(f"[DEBUG] DB 업데이트 실패: rowcount=0")
             except Exception as e:
                 print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
             finally:
@@ -340,20 +284,6 @@ async def on_message(message):
                 conn.close()
     await bot.process_commands(message)
 
-# 명령어 동기화
-@bot.event
-async def setup_hook():
-    for guild_id in GUILD_IDS:
-        guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild)
-    print("명령어 동기화 완료 (길드 전용)")
-
-# 봇 준비 완료
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-
-# 실행
 if __name__ == "__main__":
     init_db()
     bot.run(TOKEN)
