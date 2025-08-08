@@ -29,7 +29,6 @@ intents.message_content = True
 intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-
 scheduler = AsyncIOScheduler()
 
 
@@ -56,6 +55,10 @@ class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보
 # DB 연결 함수
 def get_db_connection():
     return psycopg2.connect(DB_URL)
+
+@tasks.loop(minutes=1)
+async def scheduled_task():
+    await send_weekly_summaries()
 
 # DB 초기화
 def init_db():
@@ -157,20 +160,14 @@ async def get_user_thread(user, guild):
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    if not scheduler.running:
-        scheduler.start()
-        print("스케줄러 시작됨 (on_ready에서)")
+    if not scheduled_task.is_running():
+        scheduled_task.start()
+        print("✅ 디스코드 tasks.loop로 주간기록 스케줄 시작됨")
 
 # 명령어 동기화
 @bot.event
 async def setup_hook():
     print("[DEBUG] setup_hook 실행됨")
-    scheduler.add_job(lambda: bot.loop.create_task(send_weekly_summaries()), "cron", minute="*/1", timezone="Asia/Seoul")
-    print("[DEBUG] 주간기록 잡 등록 완료")
-    
-    for guild_id in GUILD_IDS:
-        guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild)
     print("명령어 동기화 완료 (길드 전용)")
 
 
