@@ -160,7 +160,7 @@ async def get_user_thread(user, guild):
 # 명령어 동기화
 @bot.event
 async def setup_hook():
-    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="fri", hour=16, minute=27, timezone="Asia/Seoul")
+    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="fri", hour=16, minute=29, timezone="Asia/Seoul")
     scheduler.start()
     print("스케줄러 시작됨")
     for guild_id in GUILD_IDS:
