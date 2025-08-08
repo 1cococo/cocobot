@@ -153,14 +153,16 @@ async def get_user_thread(user, guild):
             print(f"[DEBUG] 스레드 탐색 실패: {e}")
     return None
 
-# 봇 시작 시 스케줄러 등록
-
+# 봇 시작 시 봇 정보 출력
+@bot.event
+async def on_ready():
     print(f"Logged in as {bot.user}")
+
 
 # 명령어 동기화
 @bot.event
 async def setup_hook():
-    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="fri", hour=16, minute=32, timezone="Asia/Seoul")
+    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="fri", hour=16, minute=35, timezone="Asia/Seoul")
     scheduler.start()
     print("스케줄러 시작됨")
     for guild_id in GUILD_IDS:
