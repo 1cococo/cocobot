@@ -154,20 +154,20 @@ async def get_user_thread(user, guild):
     return None
 
 # 봇 시작 시 스케줄러 등록
-@bot.event
-async def on_ready():
-    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="sun", hour=16, minute=20, timezone="Asia/Seoul")
-    scheduler.start()
-    print(f"Logged in as {bot.user}")
 
+    print(f"Logged in as {bot.user}")
 
 # 명령어 동기화
 @bot.event
 async def setup_hook():
+    scheduler.add_job(send_weekly_summaries, "cron", day_of_week="sun", hour=16, minute=25, timezone="Asia/Seoul")
+    scheduler.start()
+    print("스케줄러 시작됨")
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
         await bot.tree.sync(guild=guild)
     print("명령어 동기화 완료 (길드 전용)")
+
 
 
 # 스레드 찾기
