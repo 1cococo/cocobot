@@ -1,12 +1,11 @@
 import os
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks  # ✅ tasks를 여기로!
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import random
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # 환경 변수
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -56,9 +55,6 @@ class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보
 def get_db_connection():
     return psycopg2.connect(DB_URL)
 
-@tasks.loop(minutes=1)
-async def scheduled_task():
-    await send_weekly_summaries()
 
 # DB 초기화
 def init_db():
@@ -89,10 +85,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 # 주간기록 자동 전송 + 코코양 디엠 백업
-
 @tasks.loop(minutes=1)
 async def scheduled_task():
     await send_weekly_summaries()
+
 async def send_weekly_summaries():
     print("[SCHEDULER] 주간 기록 자동 전송 시작")
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
@@ -160,7 +156,7 @@ async def get_user_thread(user, guild):
             print(f"[DEBUG] 스레드 탐색 실패: {e}")
     return None
 
-# 봇 시작 시 봇 정보 출력
+# 봇 시작 시 봇 정보 출력 및 루프 시작
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
