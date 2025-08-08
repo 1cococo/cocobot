@@ -137,9 +137,9 @@ async def get_user_thread(user, guild):
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    scheduler.add_job(scheduled_task_runner, 'cron', day_of_week='sun', hour=23, minute=11, timezone='Asia/Seoul')
+    scheduler.add_job(scheduled_task_runner, 'cron', day_of_week='fri', hour=23, minute=15, timezone='Asia/Seoul')
     scheduler.start()
-    print("✅ APScheduler로 주간기록 스케줄 등록됨 (일요일 23:11)")
+    print("✅ APScheduler로 주간기록 스케줄 등록됨 (금요일 23:15)")
 
 @bot.event
 async def setup_hook():
