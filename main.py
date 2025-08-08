@@ -90,8 +90,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 주간기록 자동 전송 + 코코양 디엠 백업
 
-from discord.ext import tasks
-
 @tasks.loop(minutes=1)
 async def scheduled_task():
     await send_weekly_summaries()
@@ -175,6 +173,7 @@ async def on_ready():
 async def setup_hook():
     print("[DEBUG] setup_hook 실행됨")
     print("명령어 동기화 완료 (길드 전용)")
+
 
 
 
