@@ -1,8 +1,8 @@
 import os
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # ✅ 추가된 부분!
+from discord.ext import commands
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
@@ -31,7 +31,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 scheduler = AsyncIOScheduler()
 
-
 class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보내기"):
     message = discord.ui.TextInput(label="보낼 메세지", style=discord.TextStyle.paragraph)
 
@@ -47,7 +46,6 @@ class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보
         except Exception as e:
             print(f"[ERROR] 코코 디엠 전송 실패: {e}")
             await interaction.response.send_message("❌ 디엠 전송에 실패했어요. 관리자에게 문의해주세요.", ephemeral=True)
-
 
 def get_db_connection():
     return psycopg2.connect(DB_URL)
@@ -69,9 +67,7 @@ def init_db():
     cur.close()
     conn.close()
 
-
-@tasks.loop(minutes=1)
-async def scheduled_task():
+async def scheduled_task_runner():
     await send_weekly_summaries()
 
 async def send_weekly_summaries():
@@ -141,9 +137,9 @@ async def get_user_thread(user, guild):
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    if not scheduled_task.is_running():
-        scheduled_task.start()
-        print("✅ 디스코드 tasks.loop로 주간기록 스케줄 시작됨")
+    scheduler.add_job(scheduled_task_runner, 'cron', day_of_week='sun', hour=23, minute=8, timezone='Asia/Seoul')
+    scheduler.start()
+    print("✅ APScheduler로 주간기록 스케줄 등록됨 (일요일 23:59)")
 
 @bot.event
 async def setup_hook():
