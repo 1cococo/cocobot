@@ -164,12 +164,15 @@ async def on_ready():
 # 명령어 동기화
 @bot.event
 async def setup_hook():
-    scheduler.add_job(lambda: bot.loop.create_task(send_weekly_summaries()), "cron", day_of_week="fri", hour=21, minute=24, timezone="Asia/Seoul")
+    print("[DEBUG] setup_hook 실행됨")
+    scheduler.add_job(lambda: bot.loop.create_task(send_weekly_summaries()), "cron", minute="*/1", timezone="Asia/Seoul")
+    print("[DEBUG] 주간기록 잡 등록 완료")
     
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
         await bot.tree.sync(guild=guild)
     print("명령어 동기화 완료 (길드 전용)")
+
 
 
 
