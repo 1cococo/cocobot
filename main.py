@@ -89,6 +89,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 # 주간기록 자동 전송 + 코코양 디엠 백업
+
+from discord.ext import tasks
+
+@tasks.loop(minutes=1)
+async def scheduled_task():
+    await send_weekly_summaries()
 async def send_weekly_summaries():
     print("[SCHEDULER] 주간 기록 자동 전송 시작")
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
