@@ -40,7 +40,6 @@ class AnonToCocoModal(discord.ui.Modal, title="코코에게 익명 메세지 보
             embed = discord.Embed(title="📩 새로운 익명 메세지", color=0xADD8E6)
             embed.add_field(name="내용", value=self.message.value, inline=False)
             embed.set_footer(text=f"시간: {datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')}")
-
             await coco.send(embed=embed)
             await interaction.response.send_message("✅ 메세지가 코코에게 익명으로 전송되었어요!", ephemeral=True)
         except Exception as e:
@@ -252,32 +251,33 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.channel.type == discord.ChannelType.public_thread:
-        if message.attachments:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            try:
-                cur.execute(
-                    """
-                    UPDATE records
-                    SET image_url = %s
-                    WHERE id = (
-                        SELECT id FROM records
-                        WHERE user_id = %s AND date = %s AND image_url IS NULL
-                        ORDER BY id DESC
-                        LIMIT 1
-                    )
-                    """,
-                    (message.attachments[0].url, message.author.id, date.today())
+    # ✅ 공개 스레드 제한 제거: 어디서든(일반 채널, 스레드, DM) 첨부가 있으면 저장
+    if message.attachments:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE records
+                SET image_url = %s
+                WHERE id = (
+                    SELECT id FROM records
+                    WHERE user_id = %s AND date = %s AND image_url IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1
                 )
-                conn.commit()
-                if cur.rowcount > 0:
-                    await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
-            except Exception as e:
-                print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
-            finally:
-                cur.close()
-                conn.close()
+                """,
+                (message.attachments[0].url, message.author.id, date.today())
+            )
+            conn.commit()
+            if cur.rowcount > 0:
+                await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
+        except Exception as e:
+            print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
+        finally:
+            cur.close()
+            conn.close()
+
     await bot.process_commands(message)
 
 if __name__ == "__main__":
