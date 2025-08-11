@@ -196,15 +196,20 @@ async def 기록(interaction: discord.Interaction):
 
 @bot.tree.command(name="주간기록", description="이번 주 기록 요약", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 주간기록(interaction: discord.Interaction):
+    # ✅ KST 기준 '이번주' 계산 (월~일)
+    today_kst = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    start_of_week = today_kst - timedelta(days=today_kst.weekday())  # 이번주 월요일
+    end_of_week = start_of_week + timedelta(days=6)                  # 이번주 일요일
+
     conn = get_db_connection()
     cur = conn.cursor()
-    start_date = date.today() - timedelta(days=7)
     cur.execute("""
         SELECT category, checklist, image_url, date
         FROM records
-        WHERE user_id = %s AND date >= %s
+        WHERE user_id = %s
+          AND date BETWEEN %s AND %s
         ORDER BY date ASC
-    """, (interaction.user.id, start_date))
+    """, (interaction.user.id, start_of_week, end_of_week))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -251,8 +256,9 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # ✅ 공개 스레드 제한 제거: 어디서든(일반 채널, 스레드, DM) 첨부가 있으면 저장
+    # ✅ 공개 스레드 제한 제거 + KST 날짜 사용
     if message.attachments:
+        today_kst = datetime.now(ZoneInfo("Asia/Seoul")).date()
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -267,7 +273,7 @@ async def on_message(message):
                     LIMIT 1
                 )
                 """,
-                (message.attachments[0].url, message.author.id, date.today())
+                (message.attachments[0].url, message.author.id, today_kst)
             )
             conn.commit()
             if cur.rowcount > 0:
