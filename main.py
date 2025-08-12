@@ -71,8 +71,10 @@ async def scheduled_task_runner():
 
 async def send_weekly_summaries():
     print("[SCHEDULER] 주간 기록 자동 전송 시작")
-    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    start_date = today - timedelta(days=today.weekday())
+    # ✅ KST 기준 이번주 월~일 범위 계산
+    today_kst = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    start_of_week = today_kst - timedelta(days=today_kst.weekday())  # 이번주 월요일
+    end_of_week = start_of_week + timedelta(days=6)                  # 이번주 일요일
 
     coco = await bot.fetch_user(COCO_USER_ID)
     backup_summary = ""
@@ -87,9 +89,10 @@ async def send_weekly_summaries():
             cur.execute("""
                 SELECT category, checklist, image_url, date
                 FROM records
-                WHERE user_id = %s AND date >= %s
+                WHERE user_id = %s
+                  AND date BETWEEN %s AND %s
                 ORDER BY date ASC
-            """, (member.id, start_date))
+            """, (member.id, start_of_week, end_of_week))
             rows = cur.fetchall()
             cur.close()
             conn.close()
@@ -97,7 +100,9 @@ async def send_weekly_summaries():
             if not rows:
                 continue
 
-            summary = f"📋 @{member.name} 님의 주간 기록 요약:\n"
+            # 표시용 날짜 범위 텍스트
+            range_text = f"{start_of_week.strftime('%Y-%m-%d')} ~ {end_of_week.strftime('%Y-%m-%d')}"
+            summary = f"📋 @{member.name} 님의 주간 기록 요약 ({range_text}):\n"
             for r in rows:
                 line = f"[{r[0]}] {r[1]} ({r[3].strftime('%Y-%m-%d')})"
                 if r[2]:
@@ -136,6 +141,7 @@ async def get_user_thread(user, guild):
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    # 일요일 23:59 (KST) 실행
     scheduler.add_job(scheduled_task_runner, 'cron', day_of_week='sun', hour=23, minute=59, timezone='Asia/Seoul')
     scheduler.start()
     print("✅ APScheduler로 주간기록 스케줄 등록됨 (일요일 23:59)")
@@ -198,8 +204,8 @@ async def 기록(interaction: discord.Interaction):
 async def 주간기록(interaction: discord.Interaction):
     # ✅ KST 기준 '이번주' 계산 (월~일)
     today_kst = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    start_of_week = today_kst - timedelta(days=today_kst.weekday())  # 이번주 월요일
-    end_of_week = start_of_week + timedelta(days=6)                  # 이번주 일요일
+    start_of_week = today_kst - timedelta(days=today_kst.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
 
     conn = get_db_connection()
     cur = conn.cursor()
