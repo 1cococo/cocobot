@@ -14,6 +14,13 @@ GUILD_IDS = [int(g) for g in os.getenv("GUILD_ID", "").split(",")]
 RECORD_CHANNEL_IDS = [int(c) for c in os.getenv("RECORD_CHANNEL_ID", "").split(",")]
 DB_URL = os.getenv("DATABASE_URL")
 COCO_USER_ID = int(os.getenv("COCO_USER_ID", 0))
+COCO_LOG_CHANNEL_ID = int(os.getenv("COCO_LOG_CHANNEL_ID", 0)) 
+
+# 키워드 트리거 설정
+TRIGGER_KEYWORDS = [s.strip() for s in os.getenv("TRIGGER_KEYWORDS", "coco").split(",") if s.strip()]
+TRIGGER_RESPONSE = os.getenv("TRIGGER_RESPONSE", "코코를 부르셨나요?")
+TRIGGER_COOLDOWN_SECONDS = int(os.getenv("TRIGGER_COOLDOWN_SECONDS", "5"))
+_last_trigger_ts = {}  # 채널별 쿨다운 기록
 
 SONG_LIST = [
     "실리카겔 - APEX", "넥스트 - 도시인", "윤상 - 달리기", "DAY6 - Healer", "Young K - Let it be summer",
@@ -240,6 +247,82 @@ async def 주간기록(interaction: discord.Interaction):
 
     for i, chunk in enumerate(chunks):
         await interaction.followup.send(chunk, ephemeral=False) if i > 0 else await interaction.response.send_message(chunk, ephemeral=False)
+
+
+
+# 메시지 이벤트
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # 첨부 이미지 저장
+    if message.attachments:
+        today_kst = datetime.now(ZoneInfo("Asia/Seoul")).date()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE records
+                SET image_url = %s
+                WHERE id = (
+                    SELECT id FROM records
+                    WHERE user_id = %s AND date = %s AND image_url IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+                )
+                """,
+                (message.attachments[0].url, message.author.id, today_kst)
+            )
+            conn.commit()
+            if cur.rowcount > 0:
+                await message.channel.send(f"{message.author.mention}님의 사진이 기록에 추가되었습니다!")
+        except Exception as e:
+            print(f"[DEBUG] 이미지 저장 SQL 실패: {e}")
+        finally:
+            cur.close()
+            conn.close()
+
+    # 키워드 감지
+    content_lower = (message.content or "").lower()
+    if content_lower:
+        now = datetime.now()
+        last = _last_trigger_ts.get(message.channel.id)
+        cooldown_ok = (last is None) or ((now - last).total_seconds() >= TRIGGER_COOLDOWN_SECONDS)
+
+        if cooldown_ok and any(k.lower() in content_lower for k in TRIGGER_KEYWORDS):
+            # 응답
+            try:
+                await message.channel.send(TRIGGER_RESPONSE)
+            except Exception as e:
+                print(f"[DEBUG] 키워드 응답 실패: {e}")
+
+            # 로그 채널 복사 (닉네임 + 아바타 + 텍스트)
+            if COCO_LOG_CHANNEL_ID:
+                try:
+                    log_channel = bot.get_channel(COCO_LOG_CHANNEL_ID)
+                    if log_channel:
+                        embed = discord.Embed(
+                            description=message.content,
+                            color=0xFFD700,
+                            timestamp=datetime.now(ZoneInfo("Asia/Seoul"))
+                        )
+                        embed.set_author(
+                            name=message.author.display_name,
+                            icon_url=message.author.display_avatar.url
+                        )
+                        embed.set_footer(text=f"원본 채널: #{message.channel.name}")
+                        await log_channel.send(embed=embed)
+                except Exception as e:
+                    print(f"[DEBUG] 키워드 복사 실패: {e}")
+
+            _last_trigger_ts[message.channel.id] = now
+
+    await bot.process_commands(message)
+
+
+
 
 @bot.tree.command(name="디엠", description="코코에게 익명 메세지를 보냅니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
 async def 디엠(interaction: discord.Interaction):
