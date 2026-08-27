@@ -600,20 +600,9 @@ async def 추천음악(interaction: discord.Interaction):
 # ============================================================
 @bot.event
 async def setup_hook():
-    print(f"[SYNC] GUILD_IDS = {GUILD_IDS}")
-
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-
-        synced = await bot.tree.sync(guild=guild)
-
-        print(
-            f"[SYNC] guild={guild_id}, "
-            f"commands={len(synced)}"
-        )
-
-        for command in synced:
-            print(f"[SYNC] /{command.name}")
+        await bot.tree.sync(guild=guild)
 
     print("명령어 동기화 완료 (길드 전용)")
 
