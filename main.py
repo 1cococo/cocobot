@@ -371,127 +371,68 @@ async def 링크(interaction: discord.Interaction):
 
 
 # ============================================================
-# 주사위 이미지 생성
+# 주사위 이미지
 # ============================================================
-def get_font(size):
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/Library/Fonts/Arial Bold.ttf",
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    ]
-
-    for path in font_paths:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size)
-
-    return ImageFont.load_default()
+DICE_VALUES = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+DICE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dice")
 
 
-def create_dice_image(value):
-    width, height = 800, 800
+def get_dice_image_path(value):
+    path = os.path.join(DICE_DIR, f"dice_{value}.png")
 
-    image = Image.new("RGB", (width, height), (18, 20, 45))
-    draw = ImageDraw.Draw(image)
-
-    # 배경 별
-    for _ in range(80):
-        x = random.randint(20, width - 20)
-        y = random.randint(20, height - 20)
-        r = random.choice([1, 2, 3])
-        draw.ellipse((x-r, y-r, x+r, y+r), fill=(220, 225, 255))
-
-    # 빛나는 원
-    cx, cy = width // 2, height // 2
-    for r in range(260, 120, -20):
-        alpha = int(90 * (1 - (r - 120) / 140))
-        # 단순한 장식용 원
-        draw.ellipse(
-            (cx-r, cy-r, cx+r, cy+r),
-            outline=(90, 110, 220),
-            width=2
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"주사위 이미지 파일을 찾을 수 없습니다: {path}"
         )
 
-    # 보석형 주사위
-    points = [
-        (cx, 150),
-        (590, 270),
-        (545, 550),
-        (cx, 650),
-        (255, 550),
-        (210, 270),
-    ]
-
-    draw.polygon(
-        points,
-        fill=(55, 75, 180),
-        outline=(220, 230, 255)
-    )
-
-    # 면 분할
-    draw.line((cx, 150, cx, 650), fill=(170, 190, 255), width=5)
-    draw.line((210, 270, 590, 270), fill=(170, 190, 255), width=5)
-    draw.line((210, 270, cx, 650), fill=(120, 145, 235), width=4)
-    draw.line((590, 270, cx, 650), fill=(120, 145, 235), width=4)
-
-    # 숫자
-    font = get_font(190)
-    text = str(value)
-
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-
-    draw.text(
-        (cx - tw / 2, cy - th / 2 - 15),
-        text,
-        font=font,
-        fill=(255, 245, 185),
-        stroke_width=4,
-        stroke_fill=(35, 40, 90)
-    )
-
-    # 하단 표시
-    small_font = get_font(48)
-    label = "SUITU DICE"
-
-    bbox = draw.textbbox((0, 0), label, font=small_font)
-    tw = bbox[2] - bbox[0]
-
-    draw.text(
-        ((width - tw) / 2, 710),
-        label,
-        font=small_font,
-        fill=(210, 220, 255)
-    )
-
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    buffer.seek(0)
-
-    return buffer
+    return path
 
 
+# ============================================================
+# /주사위
+# ============================================================
 @bot.tree.command(
     name="주사위",
     description="10부터 90까지 10단위로 주사위를 굴립니다",
     guilds=[discord.Object(id=g) for g in GUILD_IDS]
 )
 async def 주사위(interaction: discord.Interaction):
-    value = random.choice(
-        [10, 20, 30, 40, 50, 60, 70, 80, 90]
-    )
+    value = random.choice(DICE_VALUES)
 
-    image_buffer = create_dice_image(value)
-    file = discord.File(
-        image_buffer,
-        filename=f"dice_{value}.png"
-    )
+    try:
+        image_path = get_dice_image_path(value)
 
-    await interaction.response.send_message(
-        f"🎲 **주사위 결과: {value}**",
-        file=file
-    )
+        file = discord.File(
+            image_path,
+            filename=f"dice_{value}.png"
+        )
+
+        await interaction.response.send_message(
+            f"🎲 **주사위 결과: {value}**",
+            file=file
+        )
+
+    except FileNotFoundError as e:
+        print(f"[ERROR] 주사위 이미지 없음: {e}")
+
+        await interaction.response.send_message(
+            "❌ 주사위 이미지 파일을 찾을 수 없습니다. 관리자에게 문의해주세요.",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        print(f"[ERROR] 주사위 실행 실패: {e}")
+
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "❌ 주사위를 굴리는 중 오류가 발생했습니다.",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "❌ 주사위를 굴리는 중 오류가 발생했습니다.",
+                ephemeral=True
+            )
 
 
 # ============================================================
