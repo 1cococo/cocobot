@@ -713,7 +713,7 @@ async def merge_ten_images(message):
 
 @bot.tree.command(
     name="이미지합치기",
-    description="다음 메시지의 이미지 10장을 5×2로 합칩니다",
+    description="이미지 10장을 5×2로 합칩니다",
     guilds=[discord.Object(id=g) for g in GUILD_IDS]
 )
 async def 이미지합치기(interaction: discord.Interaction):
@@ -726,8 +726,8 @@ async def 이미지합치기(interaction: discord.Interaction):
     _pending_image_merge_users[key] = True
 
     await interaction.response.send_message(
-        "🖼️ 다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!\n"
-        "확인되면 5×2로 합쳐 **1800×1800 PNG**로 업로드합니다.",
+        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
+        "확인되면 5×2로 합쳐 **1800×1800 PNG**로 업로드합니다!!",
         ephemeral=True
     )
 
