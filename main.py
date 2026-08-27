@@ -1,4 +1,5 @@
 import os
+import io
 import random
 import discord
 from discord.ext import commands
@@ -6,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
+from PIL import Image
 
 # ============================================================
 # 환경 변수
@@ -595,14 +597,183 @@ async def 추천음악(interaction: discord.Interaction):
 
    
 
+
+# ============================================================
+# /이미지합치기
+# ============================================================
+IMAGE_MERGE_COUNT = 10
+IMAGE_MERGE_COLUMNS = 5
+IMAGE_MERGE_ROWS = 2
+IMAGE_MERGE_OUTPUT_WIDTH = 1800
+IMAGE_MERGE_OUTPUT_HEIGHT = 1800
+IMAGE_MERGE_CELL_WIDTH = IMAGE_MERGE_OUTPUT_WIDTH // IMAGE_MERGE_COLUMNS
+IMAGE_MERGE_CELL_HEIGHT = IMAGE_MERGE_OUTPUT_HEIGHT // IMAGE_MERGE_ROWS
+
+# 투명 배경
+IMAGE_MERGE_BACKGROUND = (255, 255, 255, 0)
+
+# /이미지합치기 명령어를 실행한 사람의 다음 메시지만 처리
+_pending_image_merge_users = {}
+
+
+def is_image_attachment(attachment):
+    content_type = (attachment.content_type or "").lower()
+
+    if content_type.startswith("image/"):
+        return True
+
+    return attachment.filename.lower().endswith(
+        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff")
+    )
+
+
+async def merge_ten_images(message):
+    attachments = [
+        attachment
+        for attachment in message.attachments
+        if is_image_attachment(attachment)
+    ]
+
+    if len(attachments) != IMAGE_MERGE_COUNT:
+        return False
+
+    images = []
+
+    try:
+        # Discord 메시지에 첨부된 순서 그대로 처리
+        for attachment in attachments:
+            data = await attachment.read()
+
+            image = Image.open(io.BytesIO(data))
+            image.seek(0)
+            image = image.convert("RGBA")
+
+            # 각 칸 안에 비율을 유지하면서 최대한 크게 배치
+            image.thumbnail(
+                (IMAGE_MERGE_CELL_WIDTH, IMAGE_MERGE_CELL_HEIGHT),
+                Image.Resampling.LANCZOS
+            )
+
+            cell = Image.new(
+                "RGBA",
+                (IMAGE_MERGE_CELL_WIDTH, IMAGE_MERGE_CELL_HEIGHT),
+                IMAGE_MERGE_BACKGROUND
+            )
+
+            x = (IMAGE_MERGE_CELL_WIDTH - image.width) // 2
+            y = (IMAGE_MERGE_CELL_HEIGHT - image.height) // 2
+
+            cell.alpha_composite(image, (x, y))
+            images.append(cell)
+
+        merged = Image.new(
+            "RGBA",
+            (IMAGE_MERGE_OUTPUT_WIDTH, IMAGE_MERGE_OUTPUT_HEIGHT),
+            IMAGE_MERGE_BACKGROUND
+        )
+
+        for index, image in enumerate(images):
+            row = index // IMAGE_MERGE_COLUMNS
+            column = index % IMAGE_MERGE_COLUMNS
+
+            merged.alpha_composite(
+                image,
+                (
+                    column * IMAGE_MERGE_CELL_WIDTH,
+                    row * IMAGE_MERGE_CELL_HEIGHT
+                )
+            )
+
+        buffer = io.BytesIO()
+        merged.save(buffer, format="PNG", optimize=True)
+        buffer.seek(0)
+
+        # 업로드가 성공한 뒤에만 원본 메시지 삭제
+        await message.channel.send(
+            file=discord.File(
+                buffer,
+                filename="merged_10_images.png"
+            )
+        )
+
+        try:
+            await message.delete()
+            print("[IMAGE MERGE] 원본 10장 메시지 삭제 완료")
+        except discord.Forbidden:
+            print("[IMAGE MERGE] 메시지 삭제 권한이 없습니다.")
+        except discord.NotFound:
+            pass
+
+        return True
+
+    except Exception as e:
+        print(f"[IMAGE MERGE] 처리 실패: {e}")
+        return False
+
+
+@bot.tree.command(
+    name="이미지합치기",
+    description="다음 메시지의 이미지 10장을 5×2로 합칩니다",
+    guilds=[discord.Object(id=g) for g in GUILD_IDS]
+)
+async def 이미지합치기(interaction: discord.Interaction):
+    key = (
+        interaction.guild.id if interaction.guild else 0,
+        interaction.channel.id,
+        interaction.user.id
+    )
+
+    _pending_image_merge_users[key] = True
+
+    await interaction.response.send_message(
+        "🖼️ 다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!\n"
+        "확인되면 5×2로 합쳐 **1800×1800 PNG**로 업로드합니다.",
+        ephemeral=True
+    )
+
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    key = (
+        message.guild.id if message.guild else 0,
+        message.channel.id,
+        message.author.id
+    )
+
+    if _pending_image_merge_users.pop(key, False):
+        success = await merge_ten_images(message)
+
+        if not success:
+            try:
+                await message.channel.send(
+                    f"{message.author.mention} 이미지가 **정확히 10장**인지 확인해주세요. "
+                    "원본 메시지는 삭제하지 않았습니다."
+                )
+            except Exception as e:
+                print(f"[IMAGE MERGE] 안내 메시지 전송 실패: {e}")
+
+    # 기존 명령어 처리 유지
+    await bot.process_commands(message)
+
+
 # ============================================================
 # 봇 시작
 # ============================================================
 @bot.event
 async def setup_hook():
+    print(f"[SYNC] GUILD_IDS = {GUILD_IDS}")
+
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+
+        print(f"[SYNC] guild={guild_id}, commands={len(synced)}")
+
+        for command in synced:
+            print(f"[SYNC] /{command.name}")
 
     print("명령어 동기화 완료 (길드 전용)")
 
