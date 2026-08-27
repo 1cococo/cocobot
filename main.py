@@ -1,5 +1,4 @@
 import os
-import io
 import random
 import discord
 from discord.ext import commands
@@ -7,7 +6,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont
 
 # ============================================================
 # 환경 변수
