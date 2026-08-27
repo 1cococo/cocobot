@@ -33,11 +33,11 @@ _last_trigger_ts = {}
 # 링크 기능
 # ============================================================
 LINKS = {
-    "카카오톡 정보공유방": "https://open.kakao.com/o/gRCXZYyi",
-    "카카오톡 투표 및 조언방": "https://open.kakao.com/o/ggVsiofi",
-    "네이버 카페": "https://naver.me/FdoSMZi3",
-    "SuitU 공식 디스코드 채널": "https://discord.gg/suitu",
-    "SuitU 과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
+    "정보공유방": "https://open.kakao.com/o/gRCXZYyi",
+    "투표방": "https://open.kakao.com/o/ggVsiofi",
+    "네이버카페": "https://naver.me/FdoSMZi3",
+    "공식디스코드": "https://discord.gg/suitu",
+    "과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
 }
 
 # ============================================================
@@ -406,7 +406,7 @@ async def 주사위(interaction: discord.Interaction):
         )
 
         await interaction.response.send_message(
-            f"🎲 **주사위 결과: {value}**",
+            f"**주사위 결과: {value}**",
             file=file
         )
 
@@ -600,9 +600,20 @@ async def 추천음악(interaction: discord.Interaction):
 # ============================================================
 @bot.event
 async def setup_hook():
+    print(f"[SYNC] GUILD_IDS = {GUILD_IDS}")
+
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-        await bot.tree.sync(guild=guild)
+
+        synced = await bot.tree.sync(guild=guild)
+
+        print(
+            f"[SYNC] guild={guild_id}, "
+            f"commands={len(synced)}"
+        )
+
+        for command in synced:
+            print(f"[SYNC] /{command.name}")
 
     print("명령어 동기화 완료 (길드 전용)")
 
