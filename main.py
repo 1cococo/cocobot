@@ -35,7 +35,7 @@ _last_trigger_ts = {}
 # 링크 기능
 # ============================================================
 LINKS = {
-    "정보공유방": "https://open.kakao.com/o/gRCXZYyi",
+    "정보공유방": "https://open.kakao.com/o/gJdyGZng",
     "투표방": "https://open.kakao.com/o/ggVsiofi",
     "네이버카페": "https://naver.me/FdoSMZi3",
     "공식디스코드": "https://discord.gg/suitu",
@@ -358,7 +358,7 @@ class LinkView(discord.ui.View):
 )
 async def 링크(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🔗 SuitU 관련 링크",
+        title="SuitU 관련 링크",
         description="원하는 링크의 버튼을 눌러주세요!",
         color=0x8EA7FF
     )
@@ -605,9 +605,9 @@ IMAGE_MERGE_COUNT = 10
 IMAGE_MERGE_COLUMNS = 5
 IMAGE_MERGE_ROWS = 2
 
-# 드레스업: 2500 × 2500
-DRESSUP_OUTPUT_WIDTH = 2500
-DRESSUP_OUTPUT_HEIGHT = 2500
+# 드레스업: 5000 × 2000
+DRESSUP_OUTPUT_WIDTH = 5000∂
+DRESSUP_OUTPUT_HEIGHT = 2000
 
 # 포스트: 2500 × 1000
 POST_OUTPUT_WIDTH = 2500
@@ -722,7 +722,7 @@ async def merge_ten_images(message, mode):
 
 @bot.tree.command(
     name="이미지합치기_드레스업",
-    description="이미지 10장을 5×2로 합쳐 2500×2500으로 만듭니다",
+    description="이미지 10장을 5×2로 합쳐 5000×2000으로 만듭니다",
     guilds=[discord.Object(id=g) for g in GUILD_IDS]
 )
 async def 이미지합치기_드레스업(interaction: discord.Interaction):
@@ -736,7 +736,7 @@ async def 이미지합치기_드레스업(interaction: discord.Interaction):
 
     await interaction.response.send_message(
         "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **2500×2500 PNG**로 업로드합니다!!",
+        "5×2로 합쳐 **5000×2000 PNG**로 업로드합니다!!",
         ephemeral=True
     )
 
