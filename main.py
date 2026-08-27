@@ -33,11 +33,11 @@ _last_trigger_ts = {}
 # 링크 기능
 # ============================================================
 LINKS = {
-    "정보공유방": "https://open.kakao.com/o/gRCXZYyi",
-    "투표방": "https://open.kakao.com/o/ggVsiofi",
-    "네이버카페": "https://naver.me/FdoSMZi3",
-    "공식디스코드": "https://discord.gg/suitu",
-    "과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
+    "카카오톡 정보공유방": "https://open.kakao.com/o/gRCXZYyi",
+    "카카오톡 투표 및 조언방": "https://open.kakao.com/o/ggVsiofi",
+    "네이버 카페": "https://naver.me/FdoSMZi3",
+    "SuitU 공식 디스코드 채널": "https://discord.gg/suitu",
+    "SuitU 과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
 }
 
 # ============================================================
@@ -406,7 +406,7 @@ async def 주사위(interaction: discord.Interaction):
         )
 
         await interaction.response.send_message(
-            f"**주사위 결과: {value}**",
+            f"🎲 **주사위 결과: {value}**",
             file=file
         )
 
