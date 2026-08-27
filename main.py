@@ -599,20 +599,20 @@ async def 추천음악(interaction: discord.Interaction):
 
 
 # ============================================================
-# /이미지합치기
+# 이미지 합치기
 # ============================================================
 IMAGE_MERGE_COUNT = 10
 IMAGE_MERGE_COLUMNS = 5
 IMAGE_MERGE_ROWS = 2
-IMAGE_MERGE_OUTPUT_WIDTH = 1800
-IMAGE_MERGE_OUTPUT_HEIGHT = 1800
-IMAGE_MERGE_CELL_WIDTH = IMAGE_MERGE_OUTPUT_WIDTH // IMAGE_MERGE_COLUMNS
-IMAGE_MERGE_CELL_HEIGHT = IMAGE_MERGE_OUTPUT_HEIGHT // IMAGE_MERGE_ROWS
 
-# 투명 배경
-IMAGE_MERGE_BACKGROUND = (255, 255, 255, 0)
+# 드레스업: 2500 × 2500
+DRESSUP_OUTPUT_WIDTH = 2500
+DRESSUP_OUTPUT_HEIGHT = 2500
 
-# /이미지합치기 명령어를 실행한 사람의 다음 메시지만 처리
+# 포스트: 2500 × 1000
+POST_OUTPUT_WIDTH = 2500
+POST_OUTPUT_HEIGHT = 1000
+
 _pending_image_merge_users = {}
 
 
@@ -627,7 +627,7 @@ def is_image_attachment(attachment):
     )
 
 
-async def merge_ten_images(message):
+async def merge_ten_images(message, mode):
     attachments = [
         attachment
         for attachment in message.attachments
@@ -637,39 +637,46 @@ async def merge_ten_images(message):
     if len(attachments) != IMAGE_MERGE_COUNT:
         return False
 
+    if mode == "dressup":
+        output_width = DRESSUP_OUTPUT_WIDTH
+        output_height = DRESSUP_OUTPUT_HEIGHT
+    elif mode == "post":
+        output_width = POST_OUTPUT_WIDTH
+        output_height = POST_OUTPUT_HEIGHT
+    else:
+        return False
+
+    cell_width = output_width // IMAGE_MERGE_COLUMNS
+    cell_height = output_height // IMAGE_MERGE_ROWS
     images = []
 
     try:
-        # Discord 메시지에 첨부된 순서 그대로 처리
         for attachment in attachments:
             data = await attachment.read()
-
             image = Image.open(io.BytesIO(data))
             image.seek(0)
             image = image.convert("RGBA")
 
-            # 각 칸 안에 비율을 유지하면서 최대한 크게 배치
             image.thumbnail(
-                (IMAGE_MERGE_CELL_WIDTH, IMAGE_MERGE_CELL_HEIGHT),
+                (cell_width, cell_height),
                 Image.Resampling.LANCZOS
             )
 
             cell = Image.new(
                 "RGBA",
-                (IMAGE_MERGE_CELL_WIDTH, IMAGE_MERGE_CELL_HEIGHT),
-                IMAGE_MERGE_BACKGROUND
+                (cell_width, cell_height),
+                (255, 255, 255, 0)
             )
 
-            x = (IMAGE_MERGE_CELL_WIDTH - image.width) // 2
-            y = (IMAGE_MERGE_CELL_HEIGHT - image.height) // 2
-
+            x = (cell_width - image.width) // 2
+            y = (cell_height - image.height) // 2
             cell.alpha_composite(image, (x, y))
             images.append(cell)
 
         merged = Image.new(
             "RGBA",
-            (IMAGE_MERGE_OUTPUT_WIDTH, IMAGE_MERGE_OUTPUT_HEIGHT),
-            IMAGE_MERGE_BACKGROUND
+            (output_width, output_height),
+            (255, 255, 255, 0)
         )
 
         for index, image in enumerate(images):
@@ -679,8 +686,8 @@ async def merge_ten_images(message):
             merged.alpha_composite(
                 image,
                 (
-                    column * IMAGE_MERGE_CELL_WIDTH,
-                    row * IMAGE_MERGE_CELL_HEIGHT
+                    column * cell_width,
+                    row * cell_height
                 )
             )
 
@@ -688,17 +695,19 @@ async def merge_ten_images(message):
         merged.save(buffer, format="PNG", optimize=True)
         buffer.seek(0)
 
-        # 업로드가 성공한 뒤에만 원본 메시지 삭제
+        filename = (
+            "merged_dressup.png"
+            if mode == "dressup"
+            else "merged_post.png"
+        )
+
         await message.channel.send(
-            file=discord.File(
-                buffer,
-                filename="merged_10_images.png"
-            )
+            file=discord.File(buffer, filename=filename)
         )
 
         try:
             await message.delete()
-            print("[IMAGE MERGE] 원본 10장 메시지 삭제 완료")
+            print(f"[IMAGE MERGE] {mode} 원본 메시지 삭제 완료")
         except discord.Forbidden:
             print("[IMAGE MERGE] 메시지 삭제 권한이 없습니다.")
         except discord.NotFound:
@@ -707,27 +716,48 @@ async def merge_ten_images(message):
         return True
 
     except Exception as e:
-        print(f"[IMAGE MERGE] 처리 실패: {e}")
+        print(f"[IMAGE MERGE] {mode} 처리 실패: {e}")
         return False
 
 
 @bot.tree.command(
-    name="이미지합치기",
-    description="이미지 10장을 5×2로 합칩니다",
+    name="이미지합치기_드레스업",
+    description="이미지 10장을 5×2로 합쳐 2500×2500으로 만듭니다",
     guilds=[discord.Object(id=g) for g in GUILD_IDS]
 )
-async def 이미지합치기(interaction: discord.Interaction):
+async def 이미지합치기_드레스업(interaction: discord.Interaction):
     key = (
         interaction.guild.id if interaction.guild else 0,
         interaction.channel.id,
         interaction.user.id
     )
 
-    _pending_image_merge_users[key] = True
+    _pending_image_merge_users[key] = "dressup"
 
     await interaction.response.send_message(
         "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "확인되면 5×2로 합쳐 **1800×1800 PNG**로 업로드합니다!!",
+        "5×2로 합쳐 **2500×2500 PNG**로 업로드합니다!!",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(
+    name="이미지합치기_포스트",
+    description="이미지 10장을 5×2로 합쳐 2500×1000으로 만듭니다",
+    guilds=[discord.Object(id=g) for g in GUILD_IDS]
+)
+async def 이미지합치기_포스트(interaction: discord.Interaction):
+    key = (
+        interaction.guild.id if interaction.guild else 0,
+        interaction.channel.id,
+        interaction.user.id
+    )
+
+    _pending_image_merge_users[key] = "post"
+
+    await interaction.response.send_message(
+        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
+        "5×2로 합쳐 **2500×1000 PNG**로 업로드합니다!!",
         ephemeral=True
     )
 
@@ -743,8 +773,10 @@ async def on_message(message):
         message.author.id
     )
 
-    if _pending_image_merge_users.pop(key, False):
-        success = await merge_ten_images(message)
+    mode = _pending_image_merge_users.pop(key, None)
+
+    if mode:
+        success = await merge_ten_images(message, mode)
 
         if not success:
             try:
@@ -755,7 +787,6 @@ async def on_message(message):
             except Exception as e:
                 print(f"[IMAGE MERGE] 안내 메시지 전송 실패: {e}")
 
-    # 기존 명령어 처리 유지
     await bot.process_commands(message)
 
 
