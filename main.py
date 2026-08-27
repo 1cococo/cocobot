@@ -605,9 +605,9 @@ IMAGE_MERGE_COUNT = 10
 IMAGE_MERGE_COLUMNS = 5
 IMAGE_MERGE_ROWS = 2
 
-# 드레스업: 5000 × 2000
-DRESSUP_OUTPUT_WIDTH = 5000
-DRESSUP_OUTPUT_HEIGHT = 2000
+# 드레스업: 2635 × 2280
+DRESSUP_OUTPUT_WIDTH = 2635
+DRESSUP_OUTPUT_HEIGHT = 2280
 
 # 포스트: 2500 × 1000
 POST_OUTPUT_WIDTH = 2500
@@ -722,7 +722,7 @@ async def merge_ten_images(message, mode):
 
 @bot.tree.command(
     name="이미지합치기_드레스업",
-    description="이미지 10장을 5×2로 합쳐 5000×2000으로 만듭니다",
+    description="이미지 10장을 5×2로 합쳐 2635x2280으로 만듭니다",
     guilds=[discord.Object(id=g) for g in GUILD_IDS]
 )
 async def 이미지합치기_드레스업(interaction: discord.Interaction):
@@ -736,7 +736,7 @@ async def 이미지합치기_드레스업(interaction: discord.Interaction):
 
     await interaction.response.send_message(
         "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **5000×2000 PNG**로 업로드합니다!!",
+        "5×2로 합쳐 **2635×2280 PNG**로 업로드합니다!!",
         ephemeral=True
     )
 
