@@ -58,6 +58,7 @@ PROFILE_X = 0
 PROFILE_Y = 0
 
 _pending_image_merge_users = {}
+_levelup_locks = set()
 
 # ============================================================
 # 자체 활동 레벨 / 축하 설정
@@ -840,21 +841,36 @@ async def add_activity(member, reason):
 
 
 async def promote_member(member, old_level, new_level):
-    new_role = member.guild.get_role(LEVEL_ROLE_IDS[new_level])
-    if new_role is None:
-        print(
-            f"[LEVEL UP ERROR] 역할을 찾을 수 없습니다: "
-            f"{new_level} ({LEVEL_ROLE_IDS[new_level]})"
-        )
+    """이전 레벨 역할을 제거하고 새 레벨 역할을 1회만 부여합니다."""
+    if member.id in _levelup_locks:
+        print(f"[LEVEL UP] 중복 승급 이벤트 무시: {member}")
         return
 
-    old_roles = [
-        role for role in member.roles
-        if role.id in LEVEL_ROLE_NAMES
-        and role.id != new_role.id
-    ]
+    _levelup_locks.add(member.id)
 
     try:
+        new_role = member.guild.get_role(LEVEL_ROLE_IDS[new_level])
+        if new_role is None:
+            print(
+                f"[LEVEL UP ERROR] 역할을 찾을 수 없습니다: "
+                f"{new_level} ({LEVEL_ROLE_IDS[new_level]})"
+            )
+            return
+
+        # 이미 새 역할을 가지고 있으면 이미 처리된 승급입니다.
+        if new_role in member.roles:
+            print(
+                f"[LEVEL UP] 이미 {new_level} 역할이 있음. "
+                f"중복 축하를 보내지 않습니다: {member}"
+            )
+            return
+
+        old_roles = [
+            role for role in member.roles
+            if role.id in LEVEL_ROLE_NAMES
+            and role.id != new_role.id
+        ]
+
         if old_roles:
             await member.remove_roles(
                 *old_roles,
@@ -880,16 +896,18 @@ async def promote_member(member, old_level, new_level):
         cur.close()
         conn.close()
 
-        print(
-            f"[LEVEL UP] {member} : {old_level} → {new_level}"
-        )
+        print(f"[LEVEL UP] {member} : {old_level} → {new_level}")
         await send_levelup_greeting(member, new_level)
 
     except discord.Forbidden as e:
         print(f"[LEVEL UP ERROR] 역할 변경 권한 부족: {member} / {e}")
     except Exception as e:
-        print(f"[LEVEL UP ERROR] 승급 처리 실패: {member} / {e}")
-
+        print(
+            f"[LEVEL UP ERROR] 승급 처리 실패: "
+            f"{member} / {type(e).__name__}: {e}"
+        )
+    finally:
+        _levelup_locks.discard(member.id)
 
 async def send_levelup_greeting(member, level_name):
     try:
