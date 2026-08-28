@@ -35,6 +35,7 @@ _last_trigger_ts = {}
 # ============================================================
 # 레벨업 축하 설정
 # ============================================================
+CELEBRATION_CHANNEL_ID = 1359513583641432194
 LEVELUP_CHANNEL_ID = 1359520343177302047
 
 LEVEL_ROLES = {
@@ -53,16 +54,14 @@ FRAME_PATH = os.path.join(
     "celebration_frame.png"
 )
 
-# 현재는 생일 채널을 레벨업 채널과 동일하게 사용합니다.
-# 나중에 다른 채널을 쓰려면 BIRTHDAY_CHANNEL_ID 환경변수에 채널 ID를 넣으면 됩니다.
-BIRTHDAY_CHANNEL_ID = int(
-    os.getenv("BIRTHDAY_CHANNEL_ID", str(LEVELUP_CHANNEL_ID))
-)
+BIRTHDAY_CHANNEL_ID = CELEBRATION_CHANNEL_ID
 
-# 프레임 중앙에 들어갈 프로필 이미지 설정
-PROFILE_SIZE = 500
-PROFILE_X = 250
-PROFILE_Y = 250
+# 프로필 이미지는 최종 캔버스 1000×1000 전체를 꽉 채웁니다.
+# 먼저 정사각형 중앙 크롭한 뒤 1000×1000으로 확대하고,
+# 그 위에 celebration_frame.png를 최상단에 얹습니다.
+PROFILE_SIZE = 1000
+PROFILE_X = 0
+PROFILE_Y = 0
 
 # ============================================================
 # 링크 기능
@@ -675,6 +674,7 @@ async def make_celebration_image(user):
         Image.Resampling.LANCZOS
     )
 
+    # 프로필 사진을 1000×1000 전체에 꽉 차게 깔아줍니다.
     canvas = Image.new("RGBA", (1000, 1000), (255, 255, 255, 0))
     canvas.alpha_composite(avatar, (PROFILE_X, PROFILE_Y))
 
@@ -818,18 +818,22 @@ async def handle_carlbot_levelup(message):
 
         buffer = await make_celebration_image(member)
 
-        channel = message.guild.get_channel(LEVELUP_CHANNEL_ID)
-
-        if channel is None:
-            print(
-                f"[LEVELUP] 채널을 찾을 수 없습니다: {LEVELUP_CHANNEL_ID}"
-            )
-            return
+        # 축하 채널은 레벨업 로그가 올라오는 채널과 분리되어 있으므로
+        # 현재 메시지의 guild 캐시에만 의존하지 않고 봇 전체에서 찾습니다.
+        channel = None
+        try:
+            channel = await bot.fetch_channel(CELEBRATION_CHANNEL_ID)
+        except Exception as e:
+                print(
+                    f"[LEVELUP] 축하 채널을 찾을 수 없습니다: "
+                    f"{CELEBRATION_CHANNEL_ID} / {e}"
+                )
+                return
 
         filename = f"levelup_{user_id}_{level_name}.png"
 
         await channel.send(
-            f"**{member.display_name}님, {level_name}이 된 것을 축하합니다!!!**",
+            f"**{member.mention}님, {level_name}이 된 것을 축하합니다!!!**",
             file=discord.File(buffer, filename=filename)
         )
 
@@ -957,17 +961,12 @@ async def send_birthday_greetings():
         return
 
     channel = None
-
-    for guild in bot.guilds:
-        candidate = guild.get_channel(BIRTHDAY_CHANNEL_ID)
-        if candidate is not None:
-            channel = candidate
-            break
-
-    if channel is None:
+    try:
+        channel = await bot.fetch_channel(BIRTHDAY_CHANNEL_ID)
+    except Exception as e:
         print(
             f"[BIRTHDAY] 생일 채널을 찾을 수 없습니다: "
-            f"{BIRTHDAY_CHANNEL_ID}"
+            f"{BIRTHDAY_CHANNEL_ID} / {e}"
         )
         return
 
@@ -983,7 +982,7 @@ async def send_birthday_greetings():
             filename = f"birthday_{user_id}_{year}.png"
 
             await channel.send(
-                f"**{member.display_name}님, 생일 축하합니다!!!**",
+                f"**{member.mention}님, 생일 축하합니다!!!**",
                 file=discord.File(buffer, filename=filename)
             )
 
@@ -1236,6 +1235,8 @@ async def setup_hook():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    print(f"[CONFIG] 레벨업 감지 채널 = {LEVELUP_CHANNEL_ID}")
+    print(f"[CONFIG] 축하 전송 채널 = {CELEBRATION_CHANNEL_ID}")
 
     if not scheduler.running:
         scheduler.add_job(
