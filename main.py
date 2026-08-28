@@ -56,7 +56,6 @@ FRAME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "celebrati
 PROFILE_SIZE = 1000
 PROFILE_X = 0
 PROFILE_Y = 0
-
 _pending_image_merge_users = {}
 _levelup_locks = set()
 
@@ -173,14 +172,6 @@ def init_db():
             month INTEGER NOT NULL,
             day INTEGER NOT NULL,
             last_greeted_year INTEGER
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS welcome_sent (
-            guild_id BIGINT NOT NULL,
-            user_id BIGINT NOT NULL,
-            PRIMARY KEY (guild_id, user_id)
         )
     """)
 
@@ -1154,15 +1145,14 @@ async def send_levelup_greeting(member, level_name):
 
 @bot.event
 async def on_member_join(member):
-    """신규 멤버를 DB에 등록하고 환영 메시지를 정확히 한 번 보냅니다."""
+    """신규 멤버 환영 + 신입 활동 DB 등록."""
     if member.bot:
         return
 
-    # 활동 DB 등록은 여러 번 호출되어도 안전합니다.
+    # 신규 가입자는 신입 0회에서 시작.
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
         cur.execute(
             """
             INSERT INTO activity_counts (user_id, activity_count, level)
@@ -1171,57 +1161,12 @@ async def on_member_join(member):
             """,
             (member.id,)
         )
-
         conn.commit()
         cur.close()
         conn.close()
-
-        print(
-            f"[WELCOME] 신규 멤버 등록: "
-            f"{member} ({member.id})"
-        )
-
+        print(f"[WELCOME] 신규 멤버 등록: {member} ({member.id})")
     except Exception as e:
-        print(
-            f"[WELCOME ERROR] 활동 DB 등록 실패: "
-            f"{member} / {type(e).__name__}: {e}"
-        )
-
-    # DB의 PRIMARY KEY로 중복 welcome 이벤트를 원자적으로 차단합니다.
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            """
-            INSERT INTO welcome_sent (guild_id, user_id)
-            VALUES (%s, %s)
-            ON CONFLICT (guild_id, user_id) DO NOTHING
-            RETURNING user_id
-            """,
-            (member.guild.id, member.id)
-        )
-
-        inserted = cur.fetchone()
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        if inserted is None:
-            print(
-                f"[WELCOME] 중복 환영 이벤트 무시: "
-                f"{member} ({member.id})"
-            )
-            return
-
-    except Exception as e:
-        # DB 오류가 났을 때 무조건 환영을 보내면 중복 위험이 있으므로
-        # 이번 이벤트에서는 전송하지 않고 로그를 남깁니다.
-        print(
-            f"[WELCOME ERROR] 중복 방지 DB 처리 실패: "
-            f"{member} / {type(e).__name__}: {e}"
-        )
-        return
+        print(f"[WELCOME ERROR] 활동 DB 등록 실패: {member} / {e}")
 
     try:
         channel = bot.get_channel(WELCOME_CHANNEL_ID)
@@ -1244,23 +1189,14 @@ async def on_member_join(member):
             allowed_mentions=discord.AllowedMentions(users=True)
         )
 
-        print(
-            f"[WELCOME] 환영 메시지 전송 완료: "
-            f"{member} -> {WELCOME_CHANNEL_ID}"
-        )
+        print(f"[WELCOME] 환영 메시지 전송 완료: {member} -> {WELCOME_CHANNEL_ID}")
 
     except discord.Forbidden as e:
         print(f"[WELCOME ERROR] 환영 채널 권한 부족: {e}")
     except discord.NotFound as e:
-        print(
-            f"[WELCOME ERROR] 환영 채널을 찾을 수 없음: "
-            f"{WELCOME_CHANNEL_ID} / {e}"
-        )
+        print(f"[WELCOME ERROR] 환영 채널을 찾을 수 없음: {WELCOME_CHANNEL_ID} / {e}")
     except Exception as e:
-        print(
-            f"[WELCOME ERROR] 환영 메시지 전송 실패: "
-            f"{member} / {type(e).__name__}: {e}"
-        )
+        print(f"[WELCOME ERROR] 환영 메시지 전송 실패: {member} / {e}")
 
 @bot.event
 async def on_message(message):
@@ -1327,6 +1263,197 @@ async def on_raw_reaction_add(payload):
         await add_activity(member, f"이모지 반응 {payload.emoji}")
     except Exception as e:
         print(f"[ACTIVITY ERROR] 이모지 반응 처리 실패: {member} / {e}")
+
+# ============================================================
+# 이미지 합치기
+# ============================================================
+IMAGE_MERGE_COUNT = 10
+IMAGE_MERGE_COLUMNS = 5
+IMAGE_MERGE_ROWS = 2
+
+# 드레스업: 2635 × 2280
+DRESSUP_OUTPUT_WIDTH = 2635
+DRESSUP_OUTPUT_HEIGHT = 2280
+
+# 포스트: 2500 × 1000
+POST_OUTPUT_WIDTH = 2500
+POST_OUTPUT_HEIGHT = 1000
+
+
+def is_image_attachment(attachment):
+    content_type = (attachment.content_type or "").lower()
+
+    if content_type.startswith("image/"):
+        return True
+
+    return attachment.filename.lower().endswith(
+        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff")
+    )
+
+
+async def merge_ten_images(message, mode):
+    attachments = [
+        attachment
+        for attachment in message.attachments
+        if is_image_attachment(attachment)
+    ]
+
+    if len(attachments) != IMAGE_MERGE_COUNT:
+        return False
+
+    if mode == "dressup":
+        output_width = DRESSUP_OUTPUT_WIDTH
+        output_height = DRESSUP_OUTPUT_HEIGHT
+    elif mode == "post":
+        output_width = POST_OUTPUT_WIDTH
+        output_height = POST_OUTPUT_HEIGHT
+    else:
+        return False
+
+    cell_width = output_width // IMAGE_MERGE_COLUMNS
+    cell_height = output_height // IMAGE_MERGE_ROWS
+    images = []
+
+    try:
+        for attachment in attachments:
+            data = await attachment.read()
+            image = Image.open(io.BytesIO(data))
+            image.seek(0)
+            image = image.convert("RGBA")
+
+            image.thumbnail(
+                (cell_width, cell_height),
+                Image.Resampling.LANCZOS
+            )
+
+            cell = Image.new(
+                "RGBA",
+                (cell_width, cell_height),
+                (255, 255, 255, 0)
+            )
+
+            x = (cell_width - image.width) // 2
+            y = (cell_height - image.height) // 2
+            cell.alpha_composite(image, (x, y))
+            images.append(cell)
+
+        merged = Image.new(
+            "RGBA",
+            (output_width, output_height),
+            (255, 255, 255, 0)
+        )
+
+        for index, image in enumerate(images):
+            row = index // IMAGE_MERGE_COLUMNS
+            column = index % IMAGE_MERGE_COLUMNS
+
+            merged.alpha_composite(
+                image,
+                (
+                    column * cell_width,
+                    row * cell_height
+                )
+            )
+
+        buffer = io.BytesIO()
+        merged.save(buffer, format="PNG", optimize=True)
+        buffer.seek(0)
+
+        filename = (
+            "merged_dressup.png"
+            if mode == "dressup"
+            else "merged_post.png"
+        )
+
+        await message.channel.send(
+            file=discord.File(buffer, filename=filename)
+        )
+
+        try:
+            await message.delete()
+            print(f"[IMAGE MERGE] {mode} 원본 메시지 삭제 완료")
+        except discord.Forbidden:
+            print("[IMAGE MERGE] 메시지 삭제 권한이 없습니다.")
+        except discord.NotFound:
+            pass
+
+        return True
+
+    except Exception as e:
+        print(f"[IMAGE MERGE] {mode} 처리 실패: {e}")
+        return False
+
+
+@bot.tree.command(
+    name="이미지합치기_드레스업",
+    description="이미지 10장을 5×2로 합쳐 2635x2280으로 만듭니다",
+    guilds=[discord.Object(id=g) for g in GUILD_IDS]
+)
+async def 이미지합치기_드레스업(interaction: discord.Interaction):
+    key = (
+        interaction.guild.id if interaction.guild else 0,
+        interaction.channel.id,
+        interaction.user.id
+    )
+
+    _pending_image_merge_users[key] = "dressup"
+
+    await interaction.response.send_message(
+        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
+        "5×2로 합쳐 **2635×2280 PNG**로 업로드합니다!!",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(
+    name="이미지합치기_포스트",
+    description="이미지 10장을 5×2로 합쳐 2500×1000으로 만듭니다",
+    guilds=[discord.Object(id=g) for g in GUILD_IDS]
+)
+async def 이미지합치기_포스트(interaction: discord.Interaction):
+    key = (
+        interaction.guild.id if interaction.guild else 0,
+        interaction.channel.id,
+        interaction.user.id
+    )
+
+    _pending_image_merge_users[key] = "post"
+
+    await interaction.response.send_message(
+        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
+        "5×2로 합쳐 **2500×1000 PNG**로 업로드합니다!!",
+        ephemeral=True
+    )
+
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    key = (
+        message.guild.id if message.guild else 0,
+        message.channel.id,
+        message.author.id
+    )
+
+    mode = _pending_image_merge_users.pop(key, None)
+
+    if mode:
+        success = await merge_ten_images(message, mode)
+
+        if not success:
+            try:
+                await message.channel.send(
+                    f"{message.author.mention} 이미지가 **정확히 10장**인지 확인해주세요. "
+                    "원본 메시지는 삭제하지 않았습니다."
+                )
+            except Exception as e:
+                print(f"[IMAGE MERGE] 안내 메시지 전송 실패: {e}")
+
+    await bot.process_commands(message)
+
+
 
 # ============================================================
 # 봇 시작
