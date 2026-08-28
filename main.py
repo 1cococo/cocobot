@@ -35,6 +35,7 @@ _last_trigger_ts = {}
 # ============================================================
 # 레벨업 축하 설정
 # ============================================================
+CELEBRATION_CHANNEL_ID = 1359513583641432194
 LEVELUP_CHANNEL_ID = 1359520343177302047
 
 LEVEL_ROLES = {
@@ -53,11 +54,7 @@ FRAME_PATH = os.path.join(
     "celebration_frame.png"
 )
 
-# 현재는 생일 채널을 레벨업 채널과 동일하게 사용합니다.
-# 나중에 다른 채널을 쓰려면 BIRTHDAY_CHANNEL_ID 환경변수에 채널 ID를 넣으면 됩니다.
-BIRTHDAY_CHANNEL_ID = int(
-    os.getenv("BIRTHDAY_CHANNEL_ID", str(LEVELUP_CHANNEL_ID))
-)
+BIRTHDAY_CHANNEL_ID = CELEBRATION_CHANNEL_ID
 
 # 프레임 중앙에 들어갈 프로필 이미지 설정
 PROFILE_SIZE = 500
@@ -818,13 +815,19 @@ async def handle_carlbot_levelup(message):
 
         buffer = await make_celebration_image(member)
 
-        channel = message.guild.get_channel(LEVELUP_CHANNEL_ID)
+        # 축하 채널은 레벨업 로그가 올라오는 채널과 분리되어 있으므로
+        # 현재 메시지의 guild 캐시에만 의존하지 않고 봇 전체에서 찾습니다.
+        channel = bot.get_channel(CELEBRATION_CHANNEL_ID)
 
         if channel is None:
-            print(
-                f"[LEVELUP] 채널을 찾을 수 없습니다: {LEVELUP_CHANNEL_ID}"
-            )
-            return
+            try:
+                channel = await bot.fetch_channel(CELEBRATION_CHANNEL_ID)
+            except Exception as e:
+                print(
+                    f"[LEVELUP] 축하 채널을 찾을 수 없습니다: "
+                    f"{CELEBRATION_CHANNEL_ID} / {e}"
+                )
+                return
 
         filename = f"levelup_{user_id}_{level_name}.png"
 
@@ -1236,6 +1239,8 @@ async def setup_hook():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    print(f"[CONFIG] 레벨업 감지 채널 = {LEVELUP_CHANNEL_ID}")
+    print(f"[CONFIG] 축하 전송 채널 = {CELEBRATION_CHANNEL_ID}")
 
     if not scheduler.running:
         scheduler.add_job(
