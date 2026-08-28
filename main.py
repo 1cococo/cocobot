@@ -33,36 +33,70 @@ COCO_LOG_CHANNEL_ID = int(os.getenv("COCO_LOG_CHANNEL_ID", 0))
 _last_trigger_ts = {}
 
 # ============================================================
-# 레벨업 축하 설정
+# 자체 활동 레벨 시스템 / 레벨업 축하 설정
 # ============================================================
 LEVELUP_CHANNEL_ID = 1359520343177302047
+CELEBRATION_CHANNEL_ID = 1359513583641432194
+BIRTHDAY_CHANNEL_ID = 1359513583641432194
+WELCOME_CHANNEL_ID = 1359513583641432194
+RULES_CHANNEL_URL = "https://discord.com/channels/1359504363378184242/1359511715074801904"
 
 LEVEL_ROLES = {
     1362875669633040575: "저렙",
     1362875716521164913: "중렙",
     1362875731234787469: "고렙",
 }
+LEVEL_ROLE_IDS = {
+    "저렙": 1362875669633040575,
+    "중렙": 1362875716521164913,
+    "고렙": 1362875731234787469,
+}
+LEVEL_ACTIVITY_REQUIRED = {"신입": 3, "저렙": 10, "중렙": 20}
+FRAME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "celebration_frame.png")
+PROFILE_SIZE = 1000
+PROFILE_X = 0
+PROFILE_Y = 0
 
-# Carl-bot User ID를 알고 있다면 환경변수 CARL_BOT_USER_ID에 넣을 수 있습니다.
-# 비워두면 봇 이름에 carl/carl-bot이 포함되는지도 함께 확인합니다.
-CARL_BOT_USER_ID = int(os.getenv("CARL_BOT_USER_ID", 0))
+# ============================================================
+# 자체 활동 레벨 / 축하 설정
+# ============================================================
+CELEBRATION_CHANNEL_ID = 1359513583641432194
+BIRTHDAY_CHANNEL_ID = 1359513583641432194
 
-# 프레임은 main.py와 같은 폴더에 둡니다.
+LEVEL_ROLE_IDS = {
+    "저렙": 1362875669633040575,
+    "중렙": 1362875716521164913,
+    "고렙": 1362875731234787469,
+}
+
+LEVEL_ROLE_NAMES = {
+    1362875669633040575: "저렙",
+    1362875716521164913: "중렙",
+    1362875731234787469: "고렙",
+}
+
+# 현재 레벨에서 다음 레벨까지 필요한 '추가 활동' 수
+LEVEL_ACTIVITY_REQUIRED = {
+    "신입": 3,
+    "저렙": 10,
+    "중렙": 20,
+}
+
 FRAME_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "celebration_frame.png"
 )
 
-# 현재는 생일 채널을 레벨업 채널과 동일하게 사용합니다.
-# 나중에 다른 채널을 쓰려면 BIRTHDAY_CHANNEL_ID 환경변수에 채널 ID를 넣으면 됩니다.
-BIRTHDAY_CHANNEL_ID = int(
-    os.getenv("BIRTHDAY_CHANNEL_ID", str(LEVELUP_CHANNEL_ID))
-)
+# 프로필 이미지는 1000x1000 전체를 꽉 채움
+PROFILE_SIZE = 1000
+PROFILE_X = 0
+PROFILE_Y = 0
 
-# 프레임 중앙에 들어갈 프로필 이미지 설정
-PROFILE_SIZE = 500
-PROFILE_X = 250
-PROFILE_Y = 250
+WELCOME_CHANNEL_ID = 1359513583641432194
+RULES_CHANNEL_URL = (
+    "https://discord.com/channels/"
+    "1359504363378184242/1359511715074801904"
+)
 
 # ============================================================
 # 링크 기능
@@ -135,6 +169,14 @@ def init_db():
             month INTEGER NOT NULL,
             day INTEGER NOT NULL,
             last_greeted_year INTEGER
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS activity_counts (
+            user_id BIGINT PRIMARY KEY,
+            activity_count INTEGER NOT NULL DEFAULT 0,
+            level TEXT NOT NULL DEFAULT '신입'
         )
     """)
 
@@ -640,303 +682,251 @@ async def 추천음악(interaction: discord.Interaction):
    
 
 
+
 # ============================================================
-# 레벨업 / 생일 축하 이미지
+# 자체 활동 레벨 / 축하 이미지
 # ============================================================
 
 def crop_square(image):
-    """이미지를 중앙 기준 정사각형으로 자릅니다."""
     image = image.convert("RGBA")
     width, height = image.size
     side = min(width, height)
-
     left = (width - side) // 2
     top = (height - side) // 2
-
     return image.crop((left, top, left + side, top + side))
 
 
 async def make_celebration_image(user):
-    """
-    Discord 프로필 이미지를 celebration_frame.png 아래에 깔고
-    1000x1000 PNG로 반환합니다.
-    """
+    """프로필을 1000x1000 전체에 채우고 프레임을 최상단에 합성."""
     if not os.path.isfile(FRAME_PATH):
-        raise FileNotFoundError(
-            f"축하 프레임 파일을 찾을 수 없습니다: {FRAME_PATH}"
-        )
+        raise FileNotFoundError(f"축하 프레임 파일을 찾을 수 없습니다: {FRAME_PATH}")
 
     avatar_data = await user.display_avatar.read()
     avatar = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
     avatar = crop_square(avatar)
-
-    avatar = avatar.resize(
-        (PROFILE_SIZE, PROFILE_SIZE),
-        Image.Resampling.LANCZOS
-    )
+    avatar = avatar.resize((1000, 1000), Image.Resampling.LANCZOS)
 
     canvas = Image.new("RGBA", (1000, 1000), (255, 255, 255, 0))
-    canvas.alpha_composite(avatar, (PROFILE_X, PROFILE_Y))
+    canvas.alpha_composite(avatar, (0, 0))
 
     frame = Image.open(FRAME_PATH).convert("RGBA")
-
     if frame.size != (1000, 1000):
         frame = frame.resize((1000, 1000), Image.Resampling.LANCZOS)
-
-    # 프레임을 최상단에 얹습니다.
     canvas.alpha_composite(frame, (0, 0))
 
     buffer = io.BytesIO()
     canvas.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
-
     return buffer
 
 
-def get_carlbot_embed_text(message):
-    """Carl-bot Embed 안의 텍스트를 하나의 문자열로 합칩니다."""
-    parts = []
-
-    if message.content:
-        parts.append(message.content)
-
-    for embed in message.embeds:
-        if embed.title:
-            parts.append(embed.title)
-
-        if embed.description:
-            parts.append(embed.description)
-
-        if embed.author and embed.author.name:
-            parts.append(embed.author.name)
-
-        for field in embed.fields:
-            if field.name:
-                parts.append(field.name)
-            if field.value:
-                parts.append(field.value)
-
-        if embed.footer and embed.footer.text:
-            parts.append(embed.footer.text)
-
-    return "\n".join(parts)
+def get_member_level(member):
+    for role in member.roles:
+        if role.id in LEVEL_ROLE_NAMES:
+            return LEVEL_ROLE_NAMES[role.id]
+    return "신입"
 
 
-def is_carlbot_message(message):
-    """메시지가 Carl-bot Logging 메시지인지 최대한 안전하게 판별합니다."""
-    if CARL_BOT_USER_ID and message.author.id == CARL_BOT_USER_ID:
-        return True
-
-    author_name = str(message.author).lower()
-
-    if "carl-bot" in author_name or "carl bot" in author_name:
-        return True
-
-    # 스크린샷처럼 Carl-bot Logging이라는 Embed가 있는 경우
-    for embed in message.embeds:
-        texts = [
-            embed.title or "",
-            embed.description or "",
-            (embed.author.name if embed.author else "") or "",
-        ]
-        joined = " ".join(texts).lower()
-
-        if "carl-bot" in joined or "carl bot" in joined:
-            return True
-
-    return False
+def level_start_count(level):
+    return {
+        "신입": 0,
+        "저렙": 3,
+        "중렙": 13,
+        "고렙": 33,
+    }.get(level, 0)
 
 
-def extract_levelup_info(message):
-    """
-    Carl-bot의 Role added 로그에서
-    (유저 ID, 역할 ID, 역할 이름)을 추출합니다.
-    """
-    text = get_carlbot_embed_text(message)
-
-    if not re.search(r"\bRole\s+added\b", text, re.IGNORECASE):
-        return None
-
-    # 가장 정확한 방법: Discord Role Mention의 실제 Role ID
-    role_ids = re.findall(r"<@&(\d+)>", text)
-
-    role_id = None
-
-    for candidate in role_ids:
-        candidate = int(candidate)
-        if candidate in LEVEL_ROLES:
-            role_id = candidate
-            break
-
-    # Embed가 실제 mention 대신 @중렙 같은 텍스트만 갖는 경우의 보조 처리
-    if role_id is None:
-        for candidate_id, role_name in LEVEL_ROLES.items():
-            if re.search(
-                rf"@?\s*{re.escape(role_name)}\b",
-                text,
-                re.IGNORECASE
-            ):
-                role_id = candidate_id
-                break
-
-    if role_id is None:
-        return None
-
-    # 스크린샷의 "ID: 640551684719771648" 부분
-    user_match = re.search(r"\bID\s*:\s*(\d{15,25})\b", text)
-
-    if not user_match:
-        return None
-
-    user_id = int(user_match.group(1))
-    return user_id, role_id, LEVEL_ROLES[role_id]
+def required_total_for_next(level):
+    return {
+        "신입": 3,
+        "저렙": 13,
+        "중렙": 33,
+    }.get(level)
 
 
-async def handle_carlbot_levelup(message):
-    """Carl-bot 레벨업 로그를 감지하고 축하 메시지를 보냅니다."""
-    if message.guild is None:
+def next_level(level):
+    return {
+        "신입": "저렙",
+        "저렙": "중렙",
+        "중렙": "고렙",
+    }.get(level)
+
+
+async def initialize_member_activity(member):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT activity_count, level FROM activity_counts WHERE user_id = %s",
+        (member.id,)
+    )
+    row = cur.fetchone()
+
+    actual_level = get_member_level(member)
+
+    if row is None:
+        count = level_start_count(actual_level)
+        cur.execute(
+            """
+            INSERT INTO activity_counts (user_id, activity_count, level)
+            VALUES (%s, %s, %s)
+            """,
+            (member.id, count, actual_level)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(
+            f"[LEVEL] 기존/신규 유저 초기화: {member} / "
+            f"{actual_level} / 누적기준 {count}"
+        )
+        return count, actual_level
+
+    count, db_level = row
+
+    # Discord에 이미 더 높은 레벨 역할이 있으면 그 역할을 기준으로 시작.
+    rank = {"신입": 0, "저렙": 1, "중렙": 2, "고렙": 3}
+    if rank.get(actual_level, 0) > rank.get(db_level, 0):
+        count = max(count, level_start_count(actual_level))
+        db_level = actual_level
+        cur.execute(
+            """
+            UPDATE activity_counts
+            SET activity_count = %s, level = %s
+            WHERE user_id = %s
+            """,
+            (count, db_level, member.id)
+        )
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return count, db_level
+
+
+async def add_activity(member, reason):
+    if member.bot or member.guild is None:
         return
 
-    if message.channel.id != LEVELUP_CHANNEL_ID:
+    count, level = await initialize_member_activity(member)
+
+    if level == "고렙":
+        print(f"[ACTIVITY] {member} / {reason} / 고렙 / 승급 없음")
         return
 
-    if not is_carlbot_message(message):
+    count += 1
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE activity_counts SET activity_count = %s WHERE user_id = %s",
+        (count, member.id)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    target = required_total_for_next(level)
+    print(
+        f"[ACTIVITY] {member} / {reason} / "
+        f"{level} → {next_level(level)} / {count}/{target}"
+    )
+
+    if count >= target:
+        await promote_member(member, level, next_level(level))
+
+
+async def promote_member(member, old_level, new_level):
+    new_role = member.guild.get_role(LEVEL_ROLE_IDS[new_level])
+    if new_role is None:
+        print(
+            f"[LEVEL UP ERROR] 역할을 찾을 수 없습니다: "
+            f"{new_level} ({LEVEL_ROLE_IDS[new_level]})"
+        )
         return
 
-    info = extract_levelup_info(message)
-
-    if not info:
-        return
-
-    user_id, role_id, level_name = info
+    old_roles = [
+        role for role in member.roles
+        if role.id in LEVEL_ROLE_NAMES
+        and role.id != new_role.id
+    ]
 
     try:
-        member = message.guild.get_member(user_id)
+        if old_roles:
+            await member.remove_roles(
+                *old_roles,
+                reason=f"코코봇 자동 레벨업 {old_level} → {new_level}"
+            )
 
-        if member is None:
-            member = await message.guild.fetch_member(user_id)
+        await member.add_roles(
+            new_role,
+            reason=f"코코봇 자동 레벨업 {old_level} → {new_level}"
+        )
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE activity_counts
+            SET activity_count = %s, level = %s
+            WHERE user_id = %s
+            """,
+            (level_start_count(new_level), new_level, member.id)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print(
+            f"[LEVEL UP] {member} : {old_level} → {new_level}"
+        )
+        await send_levelup_greeting(member, new_level)
+
+    except discord.Forbidden as e:
+        print(f"[LEVEL UP ERROR] 역할 변경 권한 부족: {member} / {e}")
+    except Exception as e:
+        print(f"[LEVEL UP ERROR] 승급 처리 실패: {member} / {e}")
+
+
+async def send_levelup_greeting(member, level_name):
+    try:
+        channel = bot.get_channel(CELEBRATION_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(CELEBRATION_CHANNEL_ID)
 
         buffer = await make_celebration_image(member)
-
-        channel = message.guild.get_channel(LEVELUP_CHANNEL_ID)
-
-        if channel is None:
-            print(
-                f"[LEVELUP] 채널을 찾을 수 없습니다: {LEVELUP_CHANNEL_ID}"
-            )
-            return
-
-        filename = f"levelup_{user_id}_{level_name}.png"
-
         await channel.send(
-            f"**{member.display_name}님, {level_name}이 된 것을 축하합니다!!!**",
-            file=discord.File(buffer, filename=filename)
+            f"{member.mention}님, {level_name}이 된 것을 축하합니다!!!",
+            file=discord.File(
+                buffer,
+                filename=f"levelup_{member.id}_{level_name}.png"
+            ),
+            allowed_mentions=discord.AllowedMentions(users=True)
         )
 
         print(
-            f"[LEVELUP] {member} -> {level_name} "
-            f"(role_id={role_id}, user_id={user_id})"
+            f"[LEVEL UP] 축하 메시지 전송 완료: "
+            f"{member} -> {CELEBRATION_CHANNEL_ID}"
         )
-
-    except discord.NotFound:
-        print(f"[LEVELUP] 유저를 찾을 수 없습니다: {user_id}")
 
     except discord.Forbidden as e:
-        print(f"[LEVELUP] Discord 권한 오류: {e}")
-
+        print(f"[LEVEL UP ERROR] 축하 채널 권한 부족: {e}")
     except Exception as e:
-        print(f"[LEVELUP] 처리 실패: {e}")
+        print(f"[LEVEL UP ERROR] 축하 메시지 실패: {e}")
 
 
-@bot.tree.command(
-    name="생일",
-    description="생일을 등록합니다. 예: /생일 12 18",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 생일(interaction: discord.Interaction, month: int, day: int):
-    """유저의 생일을 DB에 저장합니다."""
-    try:
-        # 윤년 여부와 관계없이 월/일 자체가 유효한지 검사합니다.
-        # 2000년은 윤년이므로 2월 29일도 정상적으로 저장할 수 있습니다.
-        date(2000, month, day)
-
-    except ValueError:
-        await interaction.response.send_message(
-            "❌ 올바른 생일을 입력해주세요! 예: `/생일 12 18`",
-            ephemeral=True
-        )
-        return
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        INSERT INTO birthdays (user_id, month, day, last_greeted_year)
-        VALUES (%s, %s, %s, NULL)
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-            month = EXCLUDED.month,
-            day = EXCLUDED.day,
-            last_greeted_year = NULL
-        """,
-        (interaction.user.id, month, day)
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    await interaction.response.send_message(
-        f"🎂 {month}월 {day}일로 생일이 저장되었습니다!",
-        ephemeral=True
-    )
-
-
-@bot.tree.command(
-    name="생일삭제",
-    description="등록된 생일을 삭제합니다",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 생일삭제(interaction: discord.Interaction):
-    """등록된 생일을 삭제합니다."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        "DELETE FROM birthdays WHERE user_id = %s",
-        (interaction.user.id,)
-    )
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    if deleted:
-        message = "등록된 생일을 삭제했습니다!"
-    else:
-        message = "등록된 생일이 없습니다."
-
-    await interaction.response.send_message(
-        message,
-        ephemeral=True
-    )
-
-
-async def send_birthday_greetings():
-    """한국시간 자정에 생일 유저를 찾아 축하합니다."""
+@tasks.loop(time=time(0, 0, tzinfo=ZoneInfo("Asia/Seoul")))
+async def birthday_loop():
+    """매일 한국시간 자정에 생일을 확인합니다."""
     now = datetime.now(ZoneInfo("Asia/Seoul"))
+    year = now.year
     month = now.month
     day = now.day
-    year = now.year
 
-    print(f"[BIRTHDAY] {year}-{month:02d}-{day:02d} 생일 확인 시작")
+    print(f"[BIRTHDAY] {year}-{month:02d}-{day:02d} 확인")
 
     conn = get_db_connection()
     cur = conn.cursor()
-
     cur.execute(
         """
         SELECT user_id
@@ -947,49 +937,40 @@ async def send_birthday_greetings():
         """,
         (month, day, year)
     )
-
     user_ids = [row[0] for row in cur.fetchall()]
     cur.close()
     conn.close()
 
     if not user_ids:
-        print("[BIRTHDAY] 오늘 생일인 유저가 없습니다.")
+        print("[BIRTHDAY] 오늘 생일 유저 없음")
         return
 
-    channel = None
-
-    for guild in bot.guilds:
-        candidate = guild.get_channel(BIRTHDAY_CHANNEL_ID)
-        if candidate is not None:
-            channel = candidate
-            break
-
+    channel = bot.get_channel(BIRTHDAY_CHANNEL_ID)
     if channel is None:
-        print(
-            f"[BIRTHDAY] 생일 채널을 찾을 수 없습니다: "
-            f"{BIRTHDAY_CHANNEL_ID}"
-        )
-        return
+        try:
+            channel = await bot.fetch_channel(BIRTHDAY_CHANNEL_ID)
+        except Exception as e:
+            print(f"[BIRTHDAY ERROR] 채널 조회 실패: {e}")
+            return
 
     for user_id in user_ids:
         try:
             member = channel.guild.get_member(user_id)
-
             if member is None:
                 member = await channel.guild.fetch_member(user_id)
 
             buffer = await make_celebration_image(member)
-
-            filename = f"birthday_{user_id}_{year}.png"
-
             await channel.send(
-                f"**{member.display_name}님, 생일 축하합니다!!!**",
-                file=discord.File(buffer, filename=filename)
+                f"{member.mention}님, 생일 축하합니다!!!",
+                file=discord.File(
+                    buffer,
+                    filename=f"birthday_{user_id}_{year}.png"
+                ),
+                allowed_mentions=discord.AllowedMentions(users=True)
             )
 
             conn = get_db_connection()
             cur = conn.cursor()
-
             cur.execute(
                 """
                 UPDATE birthdays
@@ -998,198 +979,216 @@ async def send_birthday_greetings():
                 """,
                 (year, user_id)
             )
-
             conn.commit()
             cur.close()
             conn.close()
 
-            print(
-                f"[BIRTHDAY] {member} 생일 축하 완료 "
-                f"(user_id={user_id})"
-            )
+            print(f"[BIRTHDAY] 축하 완료: {member}")
 
         except discord.NotFound:
-            print(f"[BIRTHDAY] 서버에서 유저를 찾을 수 없습니다: {user_id}")
-
-        except discord.Forbidden as e:
-            print(f"[BIRTHDAY] Discord 권한 오류: {e}")
-
+            print(f"[BIRTHDAY] 유저를 찾을 수 없습니다: {user_id}")
         except Exception as e:
-            print(f"[BIRTHDAY] {user_id} 처리 실패: {e}")
-
+            print(f"[BIRTHDAY ERROR] {user_id} 처리 실패: {e}")
 
 # ============================================================
-# 이미지 합치기
+# 레벨업 / 생일 축하 이미지 + 자체 활동 레벨 시스템
 # ============================================================
-IMAGE_MERGE_COUNT = 10
-IMAGE_MERGE_COLUMNS = 5
-IMAGE_MERGE_ROWS = 2
 
-# 드레스업: 2635 × 2280
-DRESSUP_OUTPUT_WIDTH = 2635
-DRESSUP_OUTPUT_HEIGHT = 2280
-
-# 포스트: 2500 × 1000
-POST_OUTPUT_WIDTH = 2500
-POST_OUTPUT_HEIGHT = 1000
-
-_pending_image_merge_users = {}
+def crop_square(image):
+    image = image.convert("RGBA")
+    width, height = image.size
+    side = min(width, height)
+    left = (width - side) // 2
+    top = (height - side) // 2
+    return image.crop((left, top, left + side, top + side))
 
 
-def is_image_attachment(attachment):
-    content_type = (attachment.content_type or "").lower()
+async def make_celebration_image(user):
+    if not os.path.isfile(FRAME_PATH):
+        raise FileNotFoundError(f"축하 프레임 파일을 찾을 수 없습니다: {FRAME_PATH}")
+    avatar_data = await user.display_avatar.read()
+    avatar = crop_square(Image.open(io.BytesIO(avatar_data)))
+    avatar = avatar.resize((1000, 1000), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (1000, 1000), (255, 255, 255, 0))
+    canvas.alpha_composite(avatar, (0, 0))
+    frame = Image.open(FRAME_PATH).convert("RGBA")
+    if frame.size != (1000, 1000):
+        frame = frame.resize((1000, 1000), Image.Resampling.LANCZOS)
+    canvas.alpha_composite(frame, (0, 0))
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG", optimize=True)
+    buffer.seek(0)
+    return buffer
 
-    if content_type.startswith("image/"):
-        return True
 
-    return attachment.filename.lower().endswith(
-        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff")
-    )
+def get_member_level(member):
+    for role in member.roles:
+        if role.id in LEVEL_ROLES:
+            return LEVEL_ROLES[role.id]
+    return "신입"
 
 
-async def merge_ten_images(message, mode):
-    attachments = [
-        attachment
-        for attachment in message.attachments
-        if is_image_attachment(attachment)
-    ]
+def level_base_count(level):
+    return {"신입": 0, "저렙": 3, "중렙": 13, "고렙": 33}.get(level, 0)
 
-    if len(attachments) != IMAGE_MERGE_COUNT:
-        return False
 
-    if mode == "dressup":
-        output_width = DRESSUP_OUTPUT_WIDTH
-        output_height = DRESSUP_OUTPUT_HEIGHT
-    elif mode == "post":
-        output_width = POST_OUTPUT_WIDTH
-        output_height = POST_OUTPUT_HEIGHT
-    else:
-        return False
+def next_level(level):
+    return {"신입": "저렙", "저렙": "중렙", "중렙": "고렙"}.get(level)
 
-    cell_width = output_width // IMAGE_MERGE_COLUMNS
-    cell_height = output_height // IMAGE_MERGE_ROWS
-    images = []
 
+def total_required(level):
+    return {"신입": 0, "저렙": 3, "중렙": 13, "고렙": 33}.get(level, 0)
+
+
+async def initialize_member_activity(member):
+    current_level = get_member_level(member)
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT activity_count, level FROM activity_counts WHERE user_id=%s", (member.id,))
+    row = cur.fetchone()
+    if row is None:
+        count = level_base_count(current_level)
+        cur.execute("INSERT INTO activity_counts (user_id,activity_count,level) VALUES (%s,%s,%s)", (member.id,count,current_level))
+        conn.commit(); cur.close(); conn.close()
+        print(f"[LEVEL] 초기 등록: {member} / {current_level} / {count}")
+        return count, current_level
+    count, db_level = row
+    # Discord의 실제 역할이 DB보다 높은 경우 기존 역할을 기준으로 시작점을 맞춤
+    if total_required(current_level) > total_required(db_level):
+        count = max(count, level_base_count(current_level)); db_level = current_level
+        cur.execute("UPDATE activity_counts SET activity_count=%s,level=%s WHERE user_id=%s", (count,db_level,member.id)); conn.commit()
+    cur.close(); conn.close()
+    return count, db_level
+
+
+async def add_activity(member, reason):
+    if member.bot or member.guild is None:
+        return
+    count, level = await initialize_member_activity(member)
+    if level == "고렙":
+        print(f"[ACTIVITY] {member} / 고렙 / {reason} / 승급 없음")
+        return
+    count += 1
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("UPDATE activity_counts SET activity_count=%s WHERE user_id=%s", (count,member.id)); conn.commit(); cur.close(); conn.close()
+    nxt = next_level(level); required = total_required(nxt)
+    print(f"[ACTIVITY] {member} / {reason} / {count}/{required} / 현재={level}")
+    if count >= required:
+        await promote_member(member, level, nxt, count)
+
+
+async def promote_member(member, old_level, new_level, activity_count):
+    new_role = member.guild.get_role(LEVEL_ROLE_IDS[new_level])
+    if new_role is None:
+        print(f"[LEVEL] 새 역할을 찾을 수 없습니다: {new_level}")
+        return
+    old_roles = [r for r in member.roles if r.id in LEVEL_ROLE_IDS.values() and r.id != new_role.id]
     try:
-        for attachment in attachments:
-            data = await attachment.read()
-            image = Image.open(io.BytesIO(data))
-            image.seek(0)
-            image = image.convert("RGBA")
-
-            image.thumbnail(
-                (cell_width, cell_height),
-                Image.Resampling.LANCZOS
-            )
-
-            cell = Image.new(
-                "RGBA",
-                (cell_width, cell_height),
-                (255, 255, 255, 0)
-            )
-
-            x = (cell_width - image.width) // 2
-            y = (cell_height - image.height) // 2
-            cell.alpha_composite(image, (x, y))
-            images.append(cell)
-
-        merged = Image.new(
-            "RGBA",
-            (output_width, output_height),
-            (255, 255, 255, 0)
-        )
-
-        for index, image in enumerate(images):
-            row = index // IMAGE_MERGE_COLUMNS
-            column = index % IMAGE_MERGE_COLUMNS
-
-            merged.alpha_composite(
-                image,
-                (
-                    column * cell_width,
-                    row * cell_height
-                )
-            )
-
-        buffer = io.BytesIO()
-        merged.save(buffer, format="PNG", optimize=True)
-        buffer.seek(0)
-
-        filename = (
-            "merged_dressup.png"
-            if mode == "dressup"
-            else "merged_post.png"
-        )
-
-        await message.channel.send(
-            file=discord.File(buffer, filename=filename)
-        )
-
-        try:
-            await message.delete()
-            print(f"[IMAGE MERGE] {mode} 원본 메시지 삭제 완료")
-        except discord.Forbidden:
-            print("[IMAGE MERGE] 메시지 삭제 권한이 없습니다.")
-        except discord.NotFound:
-            pass
-
-        return True
-
+        if old_roles:
+            await member.remove_roles(*old_roles, reason=f"코코봇 자동 레벨업: {old_level} → {new_level}")
+        await member.add_roles(new_role, reason=f"코코봇 자동 레벨업: {old_level} → {new_level}")
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("UPDATE activity_counts SET activity_count=%s,level=%s WHERE user_id=%s", (total_required(new_level),new_level,member.id)); conn.commit(); cur.close(); conn.close()
+        print(f"[LEVEL UP] {member} : {old_level} → {new_level} / 활동={activity_count}")
+        await send_levelup_greeting(member, new_level)
+    except discord.Forbidden as e:
+        print(f"[LEVEL] 역할 변경 권한 오류: {member} / {e}")
     except Exception as e:
-        print(f"[IMAGE MERGE] {mode} 처리 실패: {e}")
-        return False
+        print(f"[LEVEL] 승급 처리 실패: {member} / {e}")
 
 
-@bot.tree.command(
-    name="이미지합치기_드레스업",
-    description="이미지 10장을 5×2로 합쳐 2635x2280으로 만듭니다",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 이미지합치기_드레스업(interaction: discord.Interaction):
-    key = (
-        interaction.guild.id if interaction.guild else 0,
-        interaction.channel.id,
-        interaction.user.id
-    )
-
-    _pending_image_merge_users[key] = "dressup"
-
-    await interaction.response.send_message(
-        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **2635×2280 PNG**로 업로드합니다!!",
-        ephemeral=True
-    )
+async def get_channel_by_id(channel_id):
+    for guild in bot.guilds:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+            if channel:
+                return channel
+        except (discord.NotFound, discord.Forbidden):
+            continue
+        except Exception as e:
+            print(f"[CHANNEL] 채널 조회 실패: {channel_id} / {e}")
+            continue
+    return None
 
 
-@bot.tree.command(
-    name="이미지합치기_포스트",
-    description="이미지 10장을 5×2로 합쳐 2500×1000으로 만듭니다",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 이미지합치기_포스트(interaction: discord.Interaction):
-    key = (
-        interaction.guild.id if interaction.guild else 0,
-        interaction.channel.id,
-        interaction.user.id
-    )
+async def send_levelup_greeting(member, level_name):
+    try:
+        channel = await get_channel_by_id(CELEBRATION_CHANNEL_ID)
+        if channel is None:
+            print(f"[LEVEL UP] 축하 채널을 찾을 수 없습니다: {CELEBRATION_CHANNEL_ID}")
+            return
+        buffer = await make_celebration_image(member)
+        await channel.send(f"{member.mention}님, {level_name}이 된 것을 축하합니다!!!", file=discord.File(buffer, filename=f"levelup_{member.id}_{level_name}.png"), allowed_mentions=discord.AllowedMentions(users=True))
+    except Exception as e:
+        print(f"[LEVEL UP] 축하 메시지 전송 실패: {e}")
 
-    _pending_image_merge_users[key] = "post"
-
-    await interaction.response.send_message(
-        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **2500×1000 PNG**로 업로드합니다!!",
-        ephemeral=True
-    )
 
 
 @bot.event
-async def on_message(message):
-    # Carl-bot의 레벨업 로그는 봇 메시지이므로 먼저 검사합니다.
-    await handle_carlbot_levelup(message)
+async def on_member_join(member):
+    """신규 멤버 환영 + 신입 활동 DB 등록."""
+    if member.bot:
+        return
 
-    # 나머지 봇 메시지는 기존 기능에서 무시합니다.
+    # 신규 가입자는 신입 0회에서 시작.
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO activity_counts (user_id, activity_count, level)
+            VALUES (%s, 0, '신입')
+            ON CONFLICT (user_id) DO NOTHING
+            """,
+            (member.id,)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[WELCOME] 신규 멤버 등록: {member} ({member.id})")
+    except Exception as e:
+        print(f"[WELCOME ERROR] 활동 DB 등록 실패: {member} / {e}")
+
+    try:
+        channel = bot.get_channel(WELCOME_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(WELCOME_CHANNEL_ID)
+
+        embed = discord.Embed(
+            title="Welcome to SuitU Korea Discord Server!!",
+            description=(
+                "안녕하세요!!! 수트유 한국 디스코드에 오신 것을 환영합니다!!!\n\n"
+                f"{RULES_CHANNEL_URL} 채널에서 규칙을 잘 읽어주시고, "
+                "하단에 `/링크`를 쳐서 카카오톡 정보공유방에도 놀러오세요!!!"
+            ),
+            color=discord.Color.blurple()
+        )
+
+        await channel.send(
+            content=member.mention,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(users=True)
+        )
+
+        print(f"[WELCOME] 환영 메시지 전송 완료: {member} -> {WELCOME_CHANNEL_ID}")
+
+    except discord.Forbidden as e:
+        print(f"[WELCOME ERROR] 환영 채널 권한 부족: {e}")
+    except discord.NotFound as e:
+        print(f"[WELCOME ERROR] 환영 채널을 찾을 수 없음: {WELCOME_CHANNEL_ID} / {e}")
+    except Exception as e:
+        print(f"[WELCOME ERROR] 환영 메시지 전송 실패: {member} / {e}")
+
+@bot.event
+async def on_message(message):
+    """일반 유저의 글쓰기 활동을 1회 기록합니다."""
     if message.author.bot:
         return
+
+    if message.guild is not None:
+        try:
+            await add_activity(message.author, "글쓰기")
+        except Exception as e:
+            print(f"[ACTIVITY ERROR] 글쓰기 처리 실패: {message.author} / {e}")
 
     key = (
         message.guild.id if message.guild else 0,
@@ -1201,12 +1200,11 @@ async def on_message(message):
 
     if mode:
         success = await merge_ten_images(message, mode)
-
         if not success:
             try:
                 await message.channel.send(
-                    f"{message.author.mention} 이미지가 **정확히 10장**인지 확인해주세요. "
-                    "원본 메시지는 삭제하지 않았습니다."
+                    f"{message.author.mention} 이미지가 **정확히 10장**인지 "
+                    "확인해주세요. 원본 메시지는 삭제하지 않았습니다."
                 )
             except Exception as e:
                 print(f"[IMAGE MERGE] 안내 메시지 전송 실패: {e}")
@@ -1214,8 +1212,40 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
+@bot.event
+async def on_raw_reaction_add(payload):
+    """유저의 이모지/커스텀 이모지 반응 추가를 활동 1회로 기록합니다."""
+    if payload.guild_id is None:
+        return
+
+    if bot.user is not None and payload.user_id == bot.user.id:
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        print(f"[ACTIVITY] 길드를 찾지 못했습니다: {payload.guild_id}")
+        return
+
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(payload.user_id)
+        except Exception as e:
+            print(f"[ACTIVITY ERROR] 반응 유저 조회 실패: {payload.user_id} / {e}")
+            return
+
+    if member.bot:
+        return
+
+    try:
+        await add_activity(member, f"이모지 반응 {payload.emoji}")
+    except Exception as e:
+        print(f"[ACTIVITY ERROR] 이모지 반응 처리 실패: {member} / {e}")
+
 # ============================================================
 # 봇 시작
+# ============================================================
+
 # ============================================================
 @bot.event
 async def setup_hook():
@@ -1236,6 +1266,18 @@ async def setup_hook():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    print("[LEVEL] 자체 활동 레벨 시스템 활성화")
+    print("[LEVEL] 글쓰기 +1 / 이모지 반응 +1")
+    print("[LEVEL] 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
+    print(f"[LEVEL] 레벨 역할 ID = {LEVEL_ROLE_IDS}")
+    print(f"[LEVEL] 축하 채널 ID = {CELEBRATION_CHANNEL_ID}")
+    print("[LEVEL] 자체 활동 레벨 시스템 활성화: 글쓰기 +1 / 이모지 반응 +1")
+    print("[LEVEL] 승급 기준: 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
+    print("[CONFIG] 활동 레벨: 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
+    print(f"[CONFIG] 축하 전송 채널 = {CELEBRATION_CHANNEL_ID}")
+    if not birthday_loop.is_running():
+        birthday_loop.start()
+        print("[BIRTHDAY] 한국시간 자정 자동 생일 확인 시작")
 
     if not scheduler.running:
         scheduler.add_job(
