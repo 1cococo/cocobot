@@ -1,5 +1,4 @@
 import os
-import io
 import random
 import discord
 from discord.ext import commands
@@ -7,7 +6,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-from PIL import Image
 
 # ============================================================
 # 환경 변수
@@ -35,11 +33,11 @@ _last_trigger_ts = {}
 # 링크 기능
 # ============================================================
 LINKS = {
-    "정보공유방": "https://open.kakao.com/o/gJdyGZng",
-    "투표방": "https://open.kakao.com/o/ggVsiofi",
-    "네이버카페": "https://naver.me/FdoSMZi3",
-    "공식디스코드": "https://discord.gg/suitu",
-    "과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
+    "카카오톡 정보공유방": "https://open.kakao.com/o/gRCXZYyi",
+    "카카오톡 투표 및 조언방": "https://open.kakao.com/o/ggVsiofi",
+    "네이버 카페": "https://naver.me/FdoSMZi3",
+    "SuitU 공식 디스코드 채널": "https://discord.gg/suitu",
+    "SuitU 과금사이트": "https://suitu-pay-payermax.libii.com/KR/suitu",
 }
 
 # ============================================================
@@ -358,7 +356,7 @@ class LinkView(discord.ui.View):
 )
 async def 링크(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="SuitU 관련 링크",
+        title="🔗 SuitU 관련 링크",
         description="원하는 링크의 버튼을 눌러주세요!",
         color=0x8EA7FF
     )
@@ -408,7 +406,7 @@ async def 주사위(interaction: discord.Interaction):
         )
 
         await interaction.response.send_message(
-            f"**주사위 결과: {value}**",
+            f"🎲 **주사위 결과: {value}**",
             file=file
         )
 
@@ -597,214 +595,14 @@ async def 추천음악(interaction: discord.Interaction):
 
    
 
-
-# ============================================================
-# 이미지 합치기
-# ============================================================
-IMAGE_MERGE_COUNT = 10
-IMAGE_MERGE_COLUMNS = 5
-IMAGE_MERGE_ROWS = 2
-
-# 드레스업: 2635 × 2280
-DRESSUP_OUTPUT_WIDTH = 2635
-DRESSUP_OUTPUT_HEIGHT = 2280
-
-# 포스트: 2500 × 1000
-POST_OUTPUT_WIDTH = 2500
-POST_OUTPUT_HEIGHT = 1000
-
-_pending_image_merge_users = {}
-
-
-def is_image_attachment(attachment):
-    content_type = (attachment.content_type or "").lower()
-
-    if content_type.startswith("image/"):
-        return True
-
-    return attachment.filename.lower().endswith(
-        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff")
-    )
-
-
-async def merge_ten_images(message, mode):
-    attachments = [
-        attachment
-        for attachment in message.attachments
-        if is_image_attachment(attachment)
-    ]
-
-    if len(attachments) != IMAGE_MERGE_COUNT:
-        return False
-
-    if mode == "dressup":
-        output_width = DRESSUP_OUTPUT_WIDTH
-        output_height = DRESSUP_OUTPUT_HEIGHT
-    elif mode == "post":
-        output_width = POST_OUTPUT_WIDTH
-        output_height = POST_OUTPUT_HEIGHT
-    else:
-        return False
-
-    cell_width = output_width // IMAGE_MERGE_COLUMNS
-    cell_height = output_height // IMAGE_MERGE_ROWS
-    images = []
-
-    try:
-        for attachment in attachments:
-            data = await attachment.read()
-            image = Image.open(io.BytesIO(data))
-            image.seek(0)
-            image = image.convert("RGBA")
-
-            image.thumbnail(
-                (cell_width, cell_height),
-                Image.Resampling.LANCZOS
-            )
-
-            cell = Image.new(
-                "RGBA",
-                (cell_width, cell_height),
-                (255, 255, 255, 0)
-            )
-
-            x = (cell_width - image.width) // 2
-            y = (cell_height - image.height) // 2
-            cell.alpha_composite(image, (x, y))
-            images.append(cell)
-
-        merged = Image.new(
-            "RGBA",
-            (output_width, output_height),
-            (255, 255, 255, 0)
-        )
-
-        for index, image in enumerate(images):
-            row = index // IMAGE_MERGE_COLUMNS
-            column = index % IMAGE_MERGE_COLUMNS
-
-            merged.alpha_composite(
-                image,
-                (
-                    column * cell_width,
-                    row * cell_height
-                )
-            )
-
-        buffer = io.BytesIO()
-        merged.save(buffer, format="PNG", optimize=True)
-        buffer.seek(0)
-
-        filename = (
-            "merged_dressup.png"
-            if mode == "dressup"
-            else "merged_post.png"
-        )
-
-        await message.channel.send(
-            file=discord.File(buffer, filename=filename)
-        )
-
-        try:
-            await message.delete()
-            print(f"[IMAGE MERGE] {mode} 원본 메시지 삭제 완료")
-        except discord.Forbidden:
-            print("[IMAGE MERGE] 메시지 삭제 권한이 없습니다.")
-        except discord.NotFound:
-            pass
-
-        return True
-
-    except Exception as e:
-        print(f"[IMAGE MERGE] {mode} 처리 실패: {e}")
-        return False
-
-
-@bot.tree.command(
-    name="이미지합치기_드레스업",
-    description="이미지 10장을 5×2로 합쳐 2635x2280으로 만듭니다",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 이미지합치기_드레스업(interaction: discord.Interaction):
-    key = (
-        interaction.guild.id if interaction.guild else 0,
-        interaction.channel.id,
-        interaction.user.id
-    )
-
-    _pending_image_merge_users[key] = "dressup"
-
-    await interaction.response.send_message(
-        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **2635×2280 PNG**로 업로드합니다!!",
-        ephemeral=True
-    )
-
-
-@bot.tree.command(
-    name="이미지합치기_포스트",
-    description="이미지 10장을 5×2로 합쳐 2500×1000으로 만듭니다",
-    guilds=[discord.Object(id=g) for g in GUILD_IDS]
-)
-async def 이미지합치기_포스트(interaction: discord.Interaction):
-    key = (
-        interaction.guild.id if interaction.guild else 0,
-        interaction.channel.id,
-        interaction.user.id
-    )
-
-    _pending_image_merge_users[key] = "post"
-
-    await interaction.response.send_message(
-        "다음 메시지에 **이미지 10장**을 한 번에 첨부해주세요!!!\n"
-        "5×2로 합쳐 **2500×1000 PNG**로 업로드합니다!!",
-        ephemeral=True
-    )
-
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    key = (
-        message.guild.id if message.guild else 0,
-        message.channel.id,
-        message.author.id
-    )
-
-    mode = _pending_image_merge_users.pop(key, None)
-
-    if mode:
-        success = await merge_ten_images(message, mode)
-
-        if not success:
-            try:
-                await message.channel.send(
-                    f"{message.author.mention} 이미지가 **정확히 10장**인지 확인해주세요. "
-                    "원본 메시지는 삭제하지 않았습니다."
-                )
-            except Exception as e:
-                print(f"[IMAGE MERGE] 안내 메시지 전송 실패: {e}")
-
-    await bot.process_commands(message)
-
-
 # ============================================================
 # 봇 시작
 # ============================================================
 @bot.event
 async def setup_hook():
-    print(f"[SYNC] GUILD_IDS = {GUILD_IDS}")
-
     for guild_id in GUILD_IDS:
         guild = discord.Object(id=guild_id)
-        synced = await bot.tree.sync(guild=guild)
-
-        print(f"[SYNC] guild={guild_id}, commands={len(synced)}")
-
-        for command in synced:
-            print(f"[SYNC] /{command.name}")
+        await bot.tree.sync(guild=guild)
 
     print("명령어 동기화 완료 (길드 전용)")
 
