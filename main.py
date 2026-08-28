@@ -1143,6 +1143,80 @@ async def send_levelup_greeting(member, level_name):
 
 
 
+# ============================================================
+# /생일
+# ============================================================
+
+class BirthdayModal(discord.ui.Modal, title="생일 등록"):
+    birthday = discord.ui.TextInput(label="생일 (MM-DD)", placeholder="예: 12-18", min_length=5, max_length=5, required=True)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        value = self.birthday.value.strip()
+        if not re.fullmatch(r"\d{2}-\d{2}", value):
+            await interaction.response.send_message("❌ 형식이 올바르지 않습니다. `MM-DD` 형식으로 입력해주세요!", ephemeral=True)
+            return
+        month, day = map(int, value.split("-"))
+        try:
+            date(2000, month, day)
+        except ValueError:
+            await interaction.response.send_message("❌ 존재하지 않는 날짜입니다. 다시 입력해주세요!", ephemeral=True)
+            return
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO birthdays (user_id, month, day, last_greeted_year) VALUES (%s, %s, %s, NULL)
+            ON CONFLICT (user_id) DO UPDATE SET month=EXCLUDED.month, day=EXCLUDED.day, last_greeted_year=NULL
+        """, (interaction.user.id, month, day))
+        conn.commit(); cur.close(); conn.close()
+        await interaction.response.send_message(f"🎂 {interaction.user.mention}님의 생일을 **{month:02d}월 {day:02d}일**로 등록했습니다!", allowed_mentions=discord.AllowedMentions(users=True))
+
+class BirthdayView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    @discord.ui.button(label="생일 변경", style=discord.ButtonStyle.primary)
+    async def change_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(BirthdayModal())
+
+@bot.tree.command(name="생일", description="생일을 등록하거나 등록된 생일을 확인합니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 생일(interaction: discord.Interaction):
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT month, day FROM birthdays WHERE user_id=%s", (interaction.user.id,))
+    row = cur.fetchone(); cur.close(); conn.close()
+    if row:
+        await interaction.response.send_message(f"🎂 {interaction.user.mention}님의 등록된 생일은 **{row[0]:02d}월 {row[1]:02d}일**입니다!", view=BirthdayView(), ephemeral=True, allowed_mentions=discord.AllowedMentions(users=True))
+    else:
+        await interaction.response.send_modal(BirthdayModal())
+
+@bot.tree.command(name="생일삭제", description="등록된 생일을 삭제합니다", guilds=[discord.Object(id=g) for g in GUILD_IDS])
+async def 생일삭제(interaction: discord.Interaction):
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("DELETE FROM birthdays WHERE user_id=%s", (interaction.user.id,))
+    deleted = cur.rowcount; conn.commit(); cur.close(); conn.close()
+    await interaction.response.send_message("🗑️ 등록된 생일을 삭제했습니다!" if deleted else "등록된 생일이 없습니다!", ephemeral=True)
+
+@tasks.loop(time=time(0, 0, tzinfo=ZoneInfo("Asia/Seoul")))
+async def birthday_daily_check():
+    now = datetime.now(ZoneInfo("Asia/Seoul")); year, month, day = now.year, now.month, now.day
+    print(f"[BIRTHDAY] {year}-{month:02d}-{day:02d} 확인")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT user_id FROM birthdays WHERE month=%s AND day=%s AND (last_greeted_year IS NULL OR last_greeted_year<>%s)", (month, day, year))
+    user_ids = [r[0] for r in cur.fetchall()]; cur.close(); conn.close()
+    if not user_ids: return
+    channel = await get_channel_by_id(BIRTHDAY_CHANNEL_ID)
+    if channel is None: return
+    for user_id in user_ids:
+        try:
+            member = channel.guild.get_member(user_id)
+            if member is None: member = await channel.guild.fetch_member(user_id)
+            buffer = await make_celebration_image(member)
+            await channel.send(f"{member.mention}님, 생일 축하합니다!!!", file=discord.File(buffer, filename=f"birthday_{member.id}_{year}.png"), allowed_mentions=discord.AllowedMentions(users=True))
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("UPDATE birthdays SET last_greeted_year=%s WHERE user_id=%s", (year, user_id))
+            conn.commit(); cur.close(); conn.close()
+        except Exception as e:
+            print(f"[BIRTHDAY ERROR] {user_id} 처리 실패: {type(e).__name__}: {e}")
+
+
 @bot.event
 async def on_member_join(member):
     """신규 멤버 환영 + 신입 활동 DB 등록."""
@@ -1501,10 +1575,9 @@ async def on_ready():
 
         scheduler.start()
 
-    print(
-        "✅ APScheduler 등록 완료 "
-        "(주간기록: 일요일 23:59 / 생일: 매일 00:00 KST)"
-    )
+    if not birthday_daily_check.is_running():
+        birthday_daily_check.start()
+    print("✅ 스케줄 등록 완료 (주간기록: 일요일 23:59 / 생일: 매일 00:00 KST)")
 
 
 if __name__ == "__main__":
