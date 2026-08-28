@@ -177,6 +177,14 @@ def init_db():
     """)
 
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS welcome_sent (
+            guild_id BIGINT NOT NULL,
+            user_id BIGINT NOT NULL,
+            PRIMARY KEY (guild_id, user_id)
+        )
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS activity_counts (
             user_id BIGINT PRIMARY KEY,
             activity_count INTEGER NOT NULL DEFAULT 0,
@@ -1146,14 +1154,15 @@ async def send_levelup_greeting(member, level_name):
 
 @bot.event
 async def on_member_join(member):
-    """신규 멤버 환영 + 신입 활동 DB 등록."""
+    """신규 멤버를 DB에 등록하고 환영 메시지를 정확히 한 번 보냅니다."""
     if member.bot:
         return
 
-    # 신규 가입자는 신입 0회에서 시작.
+    # 활동 DB 등록은 여러 번 호출되어도 안전합니다.
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+
         cur.execute(
             """
             INSERT INTO activity_counts (user_id, activity_count, level)
@@ -1162,12 +1171,57 @@ async def on_member_join(member):
             """,
             (member.id,)
         )
+
         conn.commit()
         cur.close()
         conn.close()
-        print(f"[WELCOME] 신규 멤버 등록: {member} ({member.id})")
+
+        print(
+            f"[WELCOME] 신규 멤버 등록: "
+            f"{member} ({member.id})"
+        )
+
     except Exception as e:
-        print(f"[WELCOME ERROR] 활동 DB 등록 실패: {member} / {e}")
+        print(
+            f"[WELCOME ERROR] 활동 DB 등록 실패: "
+            f"{member} / {type(e).__name__}: {e}"
+        )
+
+    # DB의 PRIMARY KEY로 중복 welcome 이벤트를 원자적으로 차단합니다.
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            INSERT INTO welcome_sent (guild_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (guild_id, user_id) DO NOTHING
+            RETURNING user_id
+            """,
+            (member.guild.id, member.id)
+        )
+
+        inserted = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if inserted is None:
+            print(
+                f"[WELCOME] 중복 환영 이벤트 무시: "
+                f"{member} ({member.id})"
+            )
+            return
+
+    except Exception as e:
+        # DB 오류가 났을 때 무조건 환영을 보내면 중복 위험이 있으므로
+        # 이번 이벤트에서는 전송하지 않고 로그를 남깁니다.
+        print(
+            f"[WELCOME ERROR] 중복 방지 DB 처리 실패: "
+            f"{member} / {type(e).__name__}: {e}"
+        )
+        return
 
     try:
         channel = bot.get_channel(WELCOME_CHANNEL_ID)
@@ -1190,14 +1244,23 @@ async def on_member_join(member):
             allowed_mentions=discord.AllowedMentions(users=True)
         )
 
-        print(f"[WELCOME] 환영 메시지 전송 완료: {member} -> {WELCOME_CHANNEL_ID}")
+        print(
+            f"[WELCOME] 환영 메시지 전송 완료: "
+            f"{member} -> {WELCOME_CHANNEL_ID}"
+        )
 
     except discord.Forbidden as e:
         print(f"[WELCOME ERROR] 환영 채널 권한 부족: {e}")
     except discord.NotFound as e:
-        print(f"[WELCOME ERROR] 환영 채널을 찾을 수 없음: {WELCOME_CHANNEL_ID} / {e}")
+        print(
+            f"[WELCOME ERROR] 환영 채널을 찾을 수 없음: "
+            f"{WELCOME_CHANNEL_ID} / {e}"
+        )
     except Exception as e:
-        print(f"[WELCOME ERROR] 환영 메시지 전송 실패: {member} / {e}")
+        print(
+            f"[WELCOME ERROR] 환영 메시지 전송 실패: "
+            f"{member} / {type(e).__name__}: {e}"
+        )
 
 @bot.event
 async def on_message(message):
