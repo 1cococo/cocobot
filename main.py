@@ -146,6 +146,7 @@ SONG_LIST = [
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
+intents.reactions = True
 intents.guilds = True
 intents.members = True
 
@@ -1181,6 +1182,7 @@ async def on_member_join(member):
 @bot.event
 async def on_message(message):
     """일반 유저의 글쓰기 활동을 1회 기록합니다."""
+    print(f"[MESSAGE EVENT] {message.author} / bot={message.author.bot} / guild={getattr(message.guild, "id", None)}")
     if message.author.bot:
         return
 
@@ -1215,6 +1217,7 @@ async def on_message(message):
 @bot.event
 async def on_raw_reaction_add(payload):
     """유저의 이모지/커스텀 이모지 반응 추가를 활동 1회로 기록합니다."""
+    print(f"[REACTION EVENT] user={payload.user_id} / guild={payload.guild_id} / emoji={payload.emoji}")
     if payload.guild_id is None:
         return
 
@@ -1266,6 +1269,7 @@ async def setup_hook():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    print(f"[INTENTS] message_content={bot.intents.message_content} reactions={bot.intents.reactions} members={bot.intents.members}")
     print("[LEVEL] 자체 활동 레벨 시스템 활성화")
     print("[LEVEL] 글쓰기 +1 / 이모지 반응 +1")
     print("[LEVEL] 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
@@ -1275,10 +1279,6 @@ async def on_ready():
     print("[LEVEL] 승급 기준: 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
     print("[CONFIG] 활동 레벨: 신입→저렙 3회 / 저렙→중렙 10회 추가 / 중렙→고렙 20회 추가")
     print(f"[CONFIG] 축하 전송 채널 = {CELEBRATION_CHANNEL_ID}")
-    if not birthday_loop.is_running():
-        birthday_loop.start()
-        print("[BIRTHDAY] 한국시간 자정 자동 생일 확인 시작")
-
     if not scheduler.running:
         scheduler.add_job(
             scheduled_task_runner,
