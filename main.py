@@ -3,10 +3,10 @@ import io
 import random
 import re
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import psycopg2
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from zoneinfo import ZoneInfo
 from PIL import Image
 
@@ -1286,14 +1286,6 @@ async def on_ready():
             day_of_week="sun",
             hour=23,
             minute=59,
-            timezone="Asia/Seoul"
-        )
-
-        scheduler.add_job(
-            send_birthday_greetings,
-            "cron",
-            hour=0,
-            minute=0,
             timezone="Asia/Seoul"
         )
 
