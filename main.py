@@ -445,7 +445,7 @@ class LinkView(discord.ui.View):
 )
 async def 링크(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="SuitU 관련 링크",
+        title="수트유 관련 링크",
         description="원하는 링크의 버튼을 눌러주세요!",
         color=0x8EA7FF
     )
